@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NebulaSpace.Outcome/NebulaSpace.Outcome.csproj" />
+    <Project Path="src/NebulaSpace.Outcome.AspNetCore/NebulaSpace.Outcome.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/NebulaSpace.Outcome.Samples.WebApi/NebulaSpace.Outcome.Samples.WebApi.csproj" />
+  </Folder>
+</Solution>

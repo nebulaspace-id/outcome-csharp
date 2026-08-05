@@ -1,0 +1,25 @@
+<Project>
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Allow C# 11 features (required, init, records) on older target frameworks -->
+        <LangVersion>12.0</LangVersion>
+
+        <!-- Shared NuGet package metadata -->
+        <Authors>NebulaSpace</Authors>
+        <Version>0.1.0</Version>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Description>NebulaSpace Outcome — a result pattern library for .NET with ASP.NET Core integration.</Description>
+        <PackageTags>result-pattern;outcome;aspnetcore;error-handling;ddd</PackageTags>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+        <!-- One shared readme, packed into every package -->
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+</Project>
