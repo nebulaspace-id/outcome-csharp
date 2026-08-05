@@ -1,8 +1,5 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
-using NebulaSpace.Outcome.AspNetCore;
 using NebulaSpace.Outcome.AspNetCore.Extensions;
-using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.Samples.WebApi.Failures;
 using NebulaSpace.Outcome.Samples.WebApi.Features.Greeting;
@@ -25,7 +22,7 @@ builder.Services.AddSwaggerGen(options =>
 // Result pattern options
 builder.Services.AddResultPattern(options =>
 {
-    options.EnvelopeSuccess = true;                // wrap success responses in SuccessResponse<T>
+    options.EnvelopeSuccess = true; // wrap success responses in SuccessResponse<T>
 
     // traceId is injected into error envelopes by default.
     // Add other properties to the error envelope:

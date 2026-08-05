@@ -6,4 +6,8 @@
   <Folder Name="/samples/">
     <Project Path="samples/NebulaSpace.Outcome.Samples.WebApi/NebulaSpace.Outcome.Samples.WebApi.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NebulaSpace.Outcome.Test/NebulaSpace.Outcome.Test.csproj" />
+    <Project Path="tests/NebulaSpace.Outcome.AspNetCore.Test/NebulaSpace.Outcome.AspNetCore.Test.csproj" />
+  </Folder>
 </Solution>
