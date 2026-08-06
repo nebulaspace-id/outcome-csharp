@@ -1,6 +1,8 @@
+using FluentValidation;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Failures;
 using NebulaSpace.Outcome.AspNetCore.Models;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Orders;
 
@@ -10,6 +12,13 @@ public sealed class OrderService : IOrderService
         .Range(1, 137)
         .Select(i => new Order(Guid.NewGuid(), $"Product {i}", i * 10m))
         .ToArray();
+
+    private readonly IValidator<CreateOrderRequest> _validator;
+
+    public OrderService(IValidator<CreateOrderRequest> validator)
+    {
+        _validator = validator;
+    }
 
     public PagedResult<Order> GetOrders(PageQuery pageQuery)
     {
@@ -25,15 +34,14 @@ public sealed class OrderService : IOrderService
         };
     }
 
-    public Outcome<Order> CreateOrder(CreateOrderRequest request)
+    public async Task<Outcome<Order>> CreateOrder(CreateOrderRequest request)
     {
-        if (request.Amount <= 0)
-        {
-            return Outcome.Fail(new ValidationFailure("Data order tidak valid.", new Dictionary<string, string>
-            {
-                ["Amount"] = "Jumlah harus lebih dari 0."
-            }));
-        }
+        // FluentValidation: throws ValidationException on invalid input, which the
+        // exception-handling middleware maps to a 400 with the field errors.
+        await _validator.ValidateAndThrowAsync(request);
+
+        // Simulate async work (persistence, external call).
+        await Task.Yield();
 
         if (request.Product.Equals("nope", StringComparison.OrdinalIgnoreCase))
         {

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
+using NebulaSpace.Outcome.AspNetCore.Options;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
@@ -11,11 +12,13 @@ public sealed class CreatedResult<T> : IResult
 {
     private readonly T _data;
     private readonly Func<T, object> _idSelector;
+    private readonly ResultPatternOptions _options;
 
-    public CreatedResult(T data, Func<T, object> idSelector)
+    public CreatedResult(T data, Func<T, object> idSelector, ResultPatternOptions options)
     {
         _data = data;
         _idSelector = idSelector;
+        _options = options;
     }
 
     public async Task ExecuteAsync(HttpContext httpContext)
@@ -23,7 +26,7 @@ public sealed class CreatedResult<T> : IResult
         var id = _idSelector(_data);
         var path = httpContext.Request.Path.ToString().TrimEnd('/');
 
-        object body = ResultPattern.Options.EnvelopeSuccess
+        object body = _options.SuccessEnvelope.Enabled
             ? SuccessResponse<T>.Created(_data)
             : _data!;
 

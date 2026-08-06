@@ -9,17 +9,18 @@
         <!-- Shared NuGet package metadata -->
         <Authors>NebulaSpace</Authors>
         <Version>0.1.0</Version>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <Description>NebulaSpace Outcome — a result pattern library for .NET with ASP.NET Core integration.</Description>
         <PackageTags>result-pattern;outcome;aspnetcore;error-handling;ddd</PackageTags>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 
-        <!-- One shared readme, packed into every package -->
+        <!-- One shared readme + license, packed into every package -->
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
     </PropertyGroup>
 
     <ItemGroup>
         <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" />
+        <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" />
     </ItemGroup>
 
 </Project>
