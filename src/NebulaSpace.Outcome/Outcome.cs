@@ -38,7 +38,7 @@ public readonly struct Outcome<T>
     {
         get
         {
-            if (!_isSuccess) ThrowInvalidStateAccess("Value");
+            if (!_isSuccess) ThrowOnValueAccessInFailureState();
             return _value!;
         }
     }
@@ -50,7 +50,7 @@ public readonly struct Outcome<T>
     {
         get
         {
-            if (_isSuccess) ThrowInvalidStateAccess("Failure");
+            if (_isSuccess) ThrowOnFailureAccessInSuccessState();
             return _failure!;
         }
     }
@@ -84,9 +84,15 @@ public readonly struct Outcome<T>
         failure = _failure;
     }
 
-    private static void ThrowInvalidStateAccess(string member) =>
+    private static void ThrowOnValueAccessInFailureState() =>
         throw new InvalidOperationException(
-            $"Cannot access Outcome<{typeof(T).Name}>.{member} on the current state.");
+            $"Cannot access Outcome<{typeof(T).Name}>.Value because the outcome is a failure. " +
+            $"Check {nameof(IsSuccess)} first, or handle both branches with {nameof(Match)}.");
+
+    private static void ThrowOnFailureAccessInSuccessState() =>
+        throw new InvalidOperationException(
+            $"Cannot access Outcome<{typeof(T).Name}>.Failure because the outcome is a success. " +
+            $"Check {nameof(IsSuccess)} first, or handle both branches with {nameof(Match)}.");
 }
 
 /// <summary>
