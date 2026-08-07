@@ -24,7 +24,15 @@ public sealed class ErrorEnvelopeResult : IResult
         _options = options;
     }
 
-    public async Task ExecuteAsync(HttpContext httpContext)
+    public Task ExecuteAsync(HttpContext httpContext) =>
+        ExecuteAsync(httpContext, httpContext.RequestAborted);
+
+    /// <summary>
+    /// Writes the error envelope, honoring <paramref name="cancellationToken"/> so a
+    /// client that disconnects mid-write doesn't waste the serialization work. Falls back
+    /// to <see cref="HttpContext.RequestAborted"/> when called through the interface.
+    /// </summary>
+    public async Task ExecuteAsync(HttpContext httpContext, CancellationToken cancellationToken)
     {
         object envelope = _options.ErrorEnvelopeFactory is { } factory
             ? factory(_details, httpContext)
@@ -32,7 +40,7 @@ public sealed class ErrorEnvelopeResult : IResult
 
         httpContext.Response.StatusCode = _details.StatusCode;
         // Cast to object so System.Text.Json serializes the runtime type's full shape.
-        await httpContext.Response.WriteAsJsonAsync(envelope);
+        await httpContext.Response.WriteAsJsonAsync(envelope, cancellationToken);
     }
 
     /// <summary>Builds the default clean RFC 7807 problem response from a failure's intent.</summary>

@@ -1,10 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using NebulaSpace.Outcome.AspNetCore.Extensions;
+using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
+using NebulaSpace.Outcome.AspNetCore.Options;
 using NebulaSpace.Outcome.Samples.WebApi.Failures;
 using NebulaSpace.Outcome.Samples.WebApi.Features.Exceptions;
 using NebulaSpace.Outcome.Samples.WebApi.Features.Greeting;
@@ -46,6 +50,40 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "Example API using the Result pattern.",
     });
+});
+
+// Rate limiting — fixed window, 10 req/min per client. On rejection the 429 body is the
+// SAME ErrorResponse envelope as every other error, so .Produces<ErrorResponse>(429)
+// documents what clients actually receive. HTTP status comes from the policy, the body
+// from the app's error envelope.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        // Build the SAME ErrorResponse envelope as every other error, honoring the
+        // cancellation token so a disconnecting client skips the serialization work.
+        var resultOptions = context.HttpContext.RequestServices.GetRequiredService<ResultPatternOptions>();
+        var details = new FailureDetails(
+            StatusCodes.Status429TooManyRequests,
+            message: "Too many requests. Try again later.",
+            code: "rate_limit_exceeded");
+
+        await new ErrorEnvelopeResult(details, resultOptions)
+            .ExecuteAsync(context.HttpContext, cancellationToken);
+    };
+
+    options.AddPolicy("fixed", _ => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: "global",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            AutoReplenishment = true,
+        }));
 });
 
 // Result pattern options
@@ -101,6 +139,10 @@ builder.Services.AddSingleton<IExceptionDemoService, ExceptionDemoService>();
 builder.Services.AddSingleton<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
 
 var app = builder.Build();
+
+// Rate limiter — BEFORE the exception handler and routing, so every endpoint is
+// rate-limited and rejections produce the configured 429 envelope.
+app.UseRateLimiter();
 
 // Exception handler middleware — EARLY, before routing, so unhandled exceptions from
 // any downstream middleware or endpoint produce the same error envelope as expected
