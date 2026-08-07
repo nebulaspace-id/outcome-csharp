@@ -1,4 +1,3 @@
-using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Failures;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Greeting;

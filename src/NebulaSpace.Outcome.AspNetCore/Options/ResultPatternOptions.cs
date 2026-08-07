@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Options;
 
@@ -40,6 +41,14 @@ public sealed class ResultPatternOptions
     /// <summary>Registered failure mappers, keyed by failure type.</summary>
     internal Dictionary<Type, Func<Failure, FailureDetails>> CustomFailureMappers =>
         Failures.Mappers;
+
+    /// <summary>
+    /// The configured success-envelope factory: builds the concrete envelope type from the
+    /// payload, pagination, request, and status. <c>null</c> when the default
+    /// <see cref="Models.DefaultSuccessResponse{T}"/> is used.
+    /// </summary>
+    internal Func<object?, PageInfo?, HttpContext, int, object>? SuccessEnvelopeFactory =>
+        SuccessEnvelope.Factory;
 
     /// <summary>
     /// The configured error-envelope factory: builds the concrete envelope type from a

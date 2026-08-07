@@ -20,14 +20,13 @@ public sealed class HttpResultFactory : IHttpResultFactory
     }
 
     public IResult Ok<T>(T? data = default) =>
-        _options.SuccessEnvelope.Enabled
-            ? Results.Ok(DefaultSuccessResponse<T>.Ok(data))
-            : Results.Ok(data);
+        SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 
     public IResult Ok<T>(T data, Pagination.PageInfo pageInfo) =>
-        _options.SuccessEnvelope.Enabled
-            ? Results.Ok(DefaultSuccessResponse<T>.Ok(data, pageInfo))
-            : Results.Ok(data);
+        SuccessEnvelopeResultFor(data, pageInfo, StatusCodes.Status200OK);
+
+    private IResult SuccessEnvelopeResultFor<T>(T? data, Pagination.PageInfo? pagination, int statusCode) =>
+        new SuccessEnvelopeResult<T>(data, pagination, statusCode, _options);
 
     /// <inheritdoc />
     public IResult Created<T>(T data, Func<T, object> idSelector) =>

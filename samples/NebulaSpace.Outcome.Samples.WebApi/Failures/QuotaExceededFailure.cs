@@ -1,5 +1,3 @@
-using NebulaSpace.Outcome;
-
 namespace NebulaSpace.Outcome.Samples.WebApi.Failures;
 
 /// <summary>

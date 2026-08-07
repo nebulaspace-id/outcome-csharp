@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using NebulaSpace.Outcome.AspNetCore.Extensions;
 using NebulaSpace.Outcome.AspNetCore.Http;
@@ -89,11 +88,16 @@ builder.Services.AddRateLimiter(options =>
 // Result pattern options
 builder.Services.AddOutcomeHttp(options =>
 {
-    options.SuccessEnvelope.Enabled = true; // wrap success responses in DefaultSuccessResponse<T>
+    // Success envelope — any type the app defines, serialized as-is, so
+    // .Produces<SuccessResponse<T>>() documents the exact success shape per endpoint.
+    // Pass the OPEN generic type; the library closes T per request. The type must
+    // implement ISuccessEnvelope<T> so the library can build it (fail-fast at startup).
+    options.SuccessEnvelope.Set(typeof(SuccessResponse<>));
 
     // The error envelope is any type the app defines — serialized as-is, so
-    // .Produces<ErrorResponse>() documents the exact body.
-    options.ErrorEnvelope.Set(ErrorResponse.From);
+    // .Produces<ErrorResponse>() documents the exact body. The type must implement
+    // IErrorEnvelope so the library can build it (fail-fast at startup).
+    options.ErrorEnvelope.Set(typeof(ErrorResponse));
 
     // Map application-defined failures to HTTP intent (FailureDetails) — the one
     // ErrorResponse shape renders EVERY error, including mapped failures.

@@ -32,12 +32,7 @@ public class OutcomeExceptionMiddlewareTests
         {
             if (typedEnvelope)
             {
-                options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
-                {
-                    Message = details.Message,
-                    Code = details.Code,
-                    TraceId = ctx.TraceIdentifier,
-                });
+                options.ErrorEnvelope.Set(typeof(AppError));
             }
         });
         configureServices?.Invoke(builder.Services);
@@ -257,10 +252,17 @@ public class OutcomeExceptionMiddlewareTests
     }
 
     /// <summary>A user-defined typed error envelope used by the test host.</summary>
-    private sealed class AppError
+    private sealed class AppError : IErrorEnvelope
     {
         public string? Message { get; set; }
         public string? Code { get; set; }
         public string? TraceId { get; set; }
+
+        public static IErrorEnvelope From(FailureDetails details, HttpContext ctx) => new AppError
+        {
+            Message = details.Message,
+            Code = details.Code,
+            TraceId = ctx.TraceIdentifier,
+        };
     }
 }

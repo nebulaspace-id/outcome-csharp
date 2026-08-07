@@ -7,7 +7,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// An <see cref="IResult"/> that writes an error envelope. When a typed envelope is
-/// configured (<c>options.ErrorEnvelope.Set&lt;T&gt;</c>), the body is the user-defined
+/// configured (<c>options.ErrorEnvelope.Set(typeof(MyError))</c>), the body is the user-defined
 /// type, built from the failure's HTTP intent (<see cref="FailureDetails"/>) and the
 /// current <see cref="HttpContext"/>, and serialized as-is — so OpenAPI documents the
 /// exact shape. Otherwise the default RFC 7807 <see cref="DefaultProblemDetails"/>

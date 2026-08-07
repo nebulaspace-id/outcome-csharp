@@ -7,8 +7,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// Implemented by failures that know their HTTP intent. Consulted by
 /// <see cref="IHttpResultFactory.FromFailure"/> to obtain the failure's
 /// <see cref="FailureDetails"/> (status code, message, code, errors), which the
-/// configured error envelope (<c>options.ErrorEnvelope.Set&lt;T&gt;</c>) renders into a
-/// concrete body. This keeps the factory Open/Closed — new failure types add HTTP
+/// configured error envelope (<c>options.ErrorEnvelope.Set(typeof(MyError))</c>) renders
+/// into a concrete body. This keeps the factory Open/Closed — new failure types add HTTP
 /// behavior without editing the mapping code, and the response shape stays typed.
 /// </summary>
 public interface IHttpFailure

@@ -13,8 +13,9 @@ public static class OutcomeHttpServiceCollectionExtensions
     /// so multiple applications in one process can configure the library independently.
     /// The default error shape is clean RFC 7807 <see cref="DefaultProblemDetails"/>:
     /// only <c>title</c>/<c>status</c>/<c>detail</c>. Use
-    /// <c>options.ErrorEnvelope.Set&lt;T&gt;</c> to make the error body any type you want —
-    /// it is serialized as-is, so <c>.Produces&lt;T&gt;()</c> documents the exact shape.
+    /// <c>options.ErrorEnvelope.Set(typeof(MyError))</c> — any type implementing
+    /// <see cref="IErrorEnvelope"/> — to make the error body your own; it is serialized
+    /// as-is, so <c>.Produces&lt;MyError&gt;()</c> documents the exact shape.
     /// </summary>
     public static IServiceCollection AddOutcomeHttp(
         this IServiceCollection services,

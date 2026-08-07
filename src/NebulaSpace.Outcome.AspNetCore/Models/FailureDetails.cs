@@ -4,7 +4,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 /// Describes a failure's HTTP intent: the status code, a human-readable message,
 /// a machine-readable code, and optional field errors. This type is deliberately
 /// free of any response shape — it is the raw material the configured error envelope
-/// (<c>options.ErrorEnvelope.Set&lt;T&gt;</c>) renders into a concrete body.
+/// (<c>options.ErrorEnvelope.Set(typeof(MyError))</c>) renders into a concrete body.
 /// </summary>
 public sealed class FailureDetails
 {

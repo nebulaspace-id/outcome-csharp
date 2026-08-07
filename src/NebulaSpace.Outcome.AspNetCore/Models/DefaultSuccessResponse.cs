@@ -10,22 +10,18 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 /// <c>http.Ok(data)</c> and <c>http.Created(data, ...)</c> serialize. Disable via
 /// <c>options.SuccessEnvelope.Enabled = false</c> to return the raw payload instead.
 /// </summary>
-public sealed class DefaultSuccessResponse<T>
+public sealed class DefaultSuccessResponse<T> : ISuccessEnvelope<T>
 {
     public int StatusCode { get; set; }
     public T? Data { get; set; }
     public PageInfo? Pagination { get; set; }
 
-    public static DefaultSuccessResponse<T> Ok(T? data, PageInfo? pagination = null) => new()
-    {
-        StatusCode = StatusCodes.Status200OK,
-        Data = data,
-        Pagination = pagination,
-    };
-
-    internal static DefaultSuccessResponse<T> Created(T data) => new()
-    {
-        StatusCode = StatusCodes.Status201Created,
-        Data = data,
-    };
+    /// <inheritdoc />
+    public static ISuccessEnvelope<T> From(T data, PageInfo? pagination, HttpContext httpContext, int statusCode) =>
+        new DefaultSuccessResponse<T>
+        {
+            StatusCode = statusCode,
+            Data = data,
+            Pagination = pagination,
+        };
 }

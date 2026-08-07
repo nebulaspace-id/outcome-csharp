@@ -26,12 +26,11 @@ public sealed class CreatedResult<T> : IResult
         var id = _idSelector(_data);
         var path = httpContext.Request.Path.ToString().TrimEnd('/');
 
-        object body = _options.SuccessEnvelope.Enabled
-            ? DefaultSuccessResponse<T>.Created(_data)
-            : _data!;
+        var envelope = new SuccessEnvelopeResult<T>(
+            _data, pagination: null, StatusCodes.Status201Created, _options);
 
         httpContext.Response.StatusCode = StatusCodes.Status201Created;
         httpContext.Response.Headers.Location = $"{path}/{id}";
-        await httpContext.Response.WriteAsJsonAsync(body);
+        await envelope.ExecuteAsync(httpContext);
     }
 }

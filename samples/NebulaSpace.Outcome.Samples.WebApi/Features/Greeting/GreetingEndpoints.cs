@@ -1,8 +1,5 @@
-using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Http;
-using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.Samples.WebApi.Failures;
-using NebulaSpace.Outcome.Samples.WebApi.Features.Greeting;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Greeting;
 
@@ -13,7 +10,7 @@ public static class GreetingEndpoints
         app.MapGroup("/greet")
             .MapGet("/{name}", (string name, IGreetingService greetingService, IHttpResultFactory http) =>
                 greetingService.Greet(name).ToHttpResult(http, greeting => http.Ok(new { greeting = greeting ?? "" })))
-            .Produces<DefaultSuccessResponse<GreetingResponse>>()
+            .Produces<SuccessResponse<GreetingResponse>>()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status429TooManyRequests)
             .RequireRateLimiting("fixed");
@@ -22,5 +19,5 @@ public static class GreetingEndpoints
     }
 }
 
-/// <summary>Response payload for <c>GET /greet/{name}</c> — the <c>data</c> inside <see cref="DefaultSuccessResponse{T}"/>.</summary>
+/// <summary>Response payload for <c>GET /greet/{name}</c> — the <c>data</c> inside <see cref="SuccessResponse{T}"/>.</summary>
 public sealed record GreetingResponse(string Greeting);

@@ -1,5 +1,3 @@
-using NebulaSpace.Outcome;
-using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Orders;

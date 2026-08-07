@@ -253,15 +253,9 @@ public class HttpResultTests
     [Fact]
     public async Task FromFailure_WithConfiguredTypedEnvelope_RendersIt()
     {
-        // The real AddOutcomeHttp flow: a typed envelope configured via ErrorEnvelope.Set<T>.
+        // The real AddOutcomeHttp flow: a typed envelope configured via ErrorEnvelope.Set(Type).
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
-            {
-                Code = details.Code,
-                Message = details.Message,
-                TraceId = ctx.TraceIdentifier,
-                Path = ctx.Request.Path.ToString(),
-            }));
+            options.ErrorEnvelope.Set(typeof(AppError)));
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")), path: "/orders/42");
 
@@ -287,12 +281,7 @@ public class HttpResultTests
     {
         // The default body is clean; a typed envelope decides to add code / field errors.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
-            {
-                Code = details.Code,
-                Message = details.Message,
-                FieldErrors = details.Errors,
-            }));
+            options.ErrorEnvelope.Set(typeof(AppError)));
 
         var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
         var capture = await Execute(factory, factory.FromFailure(new ValidationFailure("Invalid", errors)));
@@ -404,15 +393,10 @@ public class HttpResultTests
     [Fact]
     public async Task FromFailure_WithCustomTypedEnvelope_RendersIt()
     {
-        // ErrorEnvelope.Set<T> changes the shape of every error response — here a typed
+        // ErrorEnvelope.Set(Type) changes the shape of every error response — here a typed
         // body with an errorCode — while the status still comes from the failure.
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
-        {
-            Code = details.Code,
-            Message = details.Message,
-            TraceId = ctx.TraceIdentifier,
-        });
+        options.ErrorEnvelope.Set(typeof(AppError));
         var factory = new HttpResultFactory(options);
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")));
@@ -451,11 +435,7 @@ public class HttpResultTests
         // error shape.
         var services = new ServiceCollection();
         services.AddOutcomeHttp(options =>
-            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
-            {
-                Code = details.Code,
-                Message = details.Message,
-            }));
+            options.ErrorEnvelope.Set(typeof(AppError)));
 
         await using var provider = services.BuildServiceProvider();
         var factory = provider.GetRequiredService<IHttpResultFactory>();
@@ -484,12 +464,21 @@ public class HttpResultTests
     }
 
     /// <summary>A user-defined typed error envelope — inherits nothing, serializes fully.</summary>
-    private sealed class AppError
+    private sealed class AppError : IErrorEnvelope
     {
         public string? Code { get; set; }
         public string? Message { get; set; }
         public string? TraceId { get; set; }
         public string? Path { get; set; }
         public IReadOnlyDictionary<string, string[]>? FieldErrors { get; set; }
+
+        public static IErrorEnvelope From(FailureDetails details, HttpContext ctx) => new AppError
+        {
+            Code = details.Code,
+            Message = details.Message,
+            TraceId = ctx.TraceIdentifier,
+            Path = ctx.Request.Path.ToString(),
+            FieldErrors = details.Errors,
+        };
     }
 }
