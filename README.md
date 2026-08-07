@@ -14,6 +14,42 @@
 
 ---
 
+## Table of contents
+
+- [Why Outcome?](#why-outcome)
+- [Quick start](#quick-start)
+- [Packages](#packages)
+- [The core: `Outcome<T>`](#the-core-outcomet)
+  - [Creating outcomes](#creating-outcomes)
+  - [Reading the state](#reading-the-state)
+  - [Matching — the idiomatic handler](#matching--the-idiomatic-handler)
+  - [Pattern matching over outcomes](#pattern-matching-over-outcomes)
+- [Failures](#failures)
+  - [Built-in failures](#built-in-failures)
+  - [Custom failures](#custom-failures)
+  - [`FromFailure` resolution order](#fromfailure-resolution-order)
+- [ASP.NET Core integration](#aspnet-core-integration)
+  - [Register the services](#register-the-services)
+  - [From outcome to response](#from-outcome-to-response)
+  - [`IHttpResultFactory` helpers](#ihttpresultfactory-helpers)
+  - [`Created` — no manual URI writing](#created--no-manual-uri-writing)
+- [Response envelopes](#response-envelopes)
+  - [Success](#success)
+  - [Error — clean RFC 7807 by default](#error--clean-rfc-7807-by-default)
+  - [A typed error envelope (recommended)](#a-typed-error-envelope-recommended)
+- [Exception handling](#exception-handling)
+  - [How mapping works](#how-mapping-works)
+  - [What if you have your own exception handling — but it's not the final handler?](#what-if-you-have-your-own-exception-handling--but-its-not-the-final-handler)
+- [Pagination](#pagination)
+- [JSON serialization options](#json-serialization-options)
+- [Pluggable error shape](#pluggable-error-shape)
+- [Testing](#testing)
+- [Why `Outcome<T>` instead of exceptions?](#why-outcomet-instead-of-exceptions)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
 ## Why Outcome?
 
 Exceptions are for exceptional things. But most business errors — "not found", "duplicate",

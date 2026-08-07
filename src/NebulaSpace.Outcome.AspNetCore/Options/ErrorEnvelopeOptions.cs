@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
 
 namespace NebulaSpace.Outcome.AspNetCore.Options;
@@ -17,14 +18,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 public sealed class ErrorEnvelopeOptions
 {
     /// <summary>
-    /// The configured envelope type, or <c>null</c> when the default RFC 7807
-    /// <see cref="DefaultProblemDetails"/> is used.
-    /// </summary>
-    internal Type? EnvelopeType { get; private set; }
-
-    /// <summary>
     /// Builds a concrete envelope instance from the failure's HTTP intent and the current
-    /// request. Present only when <see cref="EnvelopeType"/> is set.
+    /// request. <c>null</c> until <see cref="Set{TEnvelope}"/> is called, after which
+    /// <see cref="ErrorEnvelopeResult"/> uses it instead of <see cref="DefaultProblemDetails"/>.
     /// </summary>
     internal Func<FailureDetails, HttpContext, object>? Factory { get; private set; }
 
@@ -50,7 +46,6 @@ public sealed class ErrorEnvelopeOptions
     /// </summary>
     public void Set<TEnvelope>(Func<FailureDetails, HttpContext, TEnvelope> factory)
     {
-        EnvelopeType = typeof(TEnvelope);
         Factory = (details, ctx) => factory(details, ctx)!;
     }
 }
