@@ -11,9 +11,10 @@ public static class OutcomeHttpServiceCollectionExtensions
     /// Registers the Outcome ASP.NET Core HTTP integration. Options are supplied
     /// through the DI container and consumed via <see cref="IHttpResultFactory"/>,
     /// so multiple applications in one process can configure the library independently.
-    /// The default error shape is clean RFC 7807 <see cref="Models.OutcomeProblemDetails"/>:
-    /// only <c>title</c>/<c>status</c>/<c>detail</c> — envelope properties
-    /// (traceId, path, custom) are opt-in via <c>options.ErrorEnvelope.Add</c>.
+    /// The default error shape is clean RFC 7807 <see cref="DefaultProblemDetails"/>:
+    /// only <c>title</c>/<c>status</c>/<c>detail</c>. Use
+    /// <c>options.ErrorEnvelope.Set&lt;T&gt;</c> to make the error body any type you want —
+    /// it is serialized as-is, so <c>.Produces&lt;T&gt;()</c> documents the exact shape.
     /// </summary>
     public static IServiceCollection AddOutcomeHttp(
         this IServiceCollection services,
@@ -23,7 +24,6 @@ public static class OutcomeHttpServiceCollectionExtensions
         configure?.Invoke(options);
 
         services.AddSingleton(options);
-        services.AddSingleton<IErrorResponseFactory, DefaultErrorResponseFactory>();
         services.AddSingleton<IHttpResultFactory, HttpResultFactory>();
 
         return services;

@@ -27,7 +27,7 @@ public sealed class CreatedResult<T> : IResult
         var path = httpContext.Request.Path.ToString().TrimEnd('/');
 
         object body = _options.SuccessEnvelope.Enabled
-            ? SuccessResponse<T>.Created(_data)
+            ? DefaultSuccessResponse<T>.Created(_data)
             : _data!;
 
         httpContext.Response.StatusCode = StatusCodes.Status201Created;

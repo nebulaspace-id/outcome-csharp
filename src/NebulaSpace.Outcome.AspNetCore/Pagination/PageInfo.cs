@@ -1,13 +1,13 @@
 namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 
-public sealed class Pagination
+public sealed class PageInfo
 {
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages { get; set; }
     public int TotalItems { get; set; }
 
-    public static Pagination Create(int page, int pageSize, int totalItems) => new()
+    public static PageInfo Create(int page, int pageSize, int totalItems) => new()
     {
         Page = page,
         PageSize = pageSize,
@@ -15,7 +15,7 @@ public sealed class Pagination
         TotalItems = totalItems,
     };
 
-    /// <summary>Creates <see cref="Pagination"/> from a <see cref="PageQuery"/> and the total item count.</summary>
-    public static Pagination Create(PageQuery query, int totalItems) =>
+    /// <summary>Creates <see cref="PageInfo"/> from a <see cref="PageQuery"/> and the total item count.</summary>
+    public static PageInfo Create(PageQuery query, int totalItems) =>
         Create(query.Page, query.PageSize, totalItems);
 }

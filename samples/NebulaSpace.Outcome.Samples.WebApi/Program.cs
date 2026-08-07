@@ -51,39 +51,42 @@ builder.Services.AddSwaggerGen(options =>
 // Result pattern options
 builder.Services.AddOutcomeHttp(options =>
 {
-    options.SuccessEnvelope.Enabled = true; // wrap success responses in SuccessResponse<T>
+    options.SuccessEnvelope.Enabled = true; // wrap success responses in DefaultSuccessResponse<T>
 
-    // The default error shape is clean RFC 7807 ProblemDetails: only title/status/detail.
-    // Envelope properties (appear ONLY on error responses) are opt-in:
-    options.ErrorEnvelope.Add("traceId", context => context.TraceIdentifier);
-    options.ErrorEnvelope.Add("environment", _ => builder.Environment.EnvironmentName);
+    // The error envelope is any type the app defines — serialized as-is, so
+    // .Produces<ErrorResponse>() documents the exact body.
+    options.ErrorEnvelope.Set(ErrorResponse.From);
 
-    // Map application-defined failures to HTTP responses. The factory returns a
-    // concrete IErrorResponse (ProblemDetails or ErrorResponse); envelope properties
-    // still inject on top of it.
-    // (Example — requires a QuotaExceededFailure type; remove if unused.)
+    // Map application-defined failures to HTTP intent (FailureDetails) — the one
+    // ErrorResponse shape renders EVERY error, including mapped failures.
     options.Failures.Map<QuotaExceededFailure>(f =>
-        ErrorResponse.UnprocessableEntity(f.Message, f.Code));
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
 });
 
 // Unhandled exceptions → the same error envelope (status 500) as expected failures.
 // Register first, then UseOutcomeExceptionHandler() in the pipeline.
 builder.Services.AddOutcomeExceptionHandler(options =>
 {
-    // Map known exception types to a specific envelope — bypasses the generic 500
-    // fallback (and IncludeExceptionDetails). E.g. a domain exception becomes 422;
-    // the error code comes from the exception instance, not a hardcoded string:
+    // Exception mappers return HTTP INTENT (FailureDetails), not an envelope — the one
+    // ErrorResponse shape renders every exception too. E.g. a domain exception becomes 422:
     options.Exceptions.Map<DomainException>(ex =>
-        ErrorResponse.UnprocessableEntity(ex.Message, ex.Code));
+        new FailureDetails(
+            statusCode: StatusCodes.Status422UnprocessableEntity,
+            message: ex.Message,
+            code: "domain_error")
+    );
 
-    // FluentValidation failures → 400 Bad Request with the field errors. Multiple messages
-    // for the same property are joined with "; ". The errors come from the
-    // ValidationException instance (property name → message), not hardcoded.
+    // FluentValidation failures → 400 Bad Request with field errors. Per RFC 9457 each
+    // field maps to an ARRAY of messages — one message is a single-element array, several
+    // become a longer array. Errors come from the instance.
     options.Exceptions.Map<ValidationException>(ex =>
-        ErrorResponse.BadRequest("Validation Error",
+        new FailureDetails(
+            statusCode: StatusCodes.Status400BadRequest,
+            message: "Validation Error",
+            code: "validation_error",
             errors: ex.Errors
                 .GroupBy(e => e.PropertyName)
-                .ToDictionary(g => g.Key, g => string.Join("; ", g.Select(e => e.ErrorMessage)))));
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())));
 
     // Only in Development should UNHANDLED exception details leak into the response body.
     options.IncludeExceptionDetails = builder.Environment.IsDevelopment();

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -9,123 +8,119 @@ using NebulaSpace.Outcome.AspNetCore.Tests.Unit.TestHelpers;
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
 /// <summary>
-/// Verifies that <see cref="ErrorEnvelopeResult"/> injects the configured envelope
-/// properties (traceId, path, custom) at execution time — the source-injection
-/// replacement for the removed buffering middleware.
+/// Verifies the typed error envelope: <see cref="ErrorEnvelopeResult"/> renders the
+/// user-defined envelope type via <c>options.ErrorEnvelope.Set&lt;T&gt;</c> (built from
+/// the failure's HTTP intent and the request), writes the status from
+/// <see cref="FailureDetails"/>, and falls back to the default RFC 7807
+/// <see cref="DefaultProblemDetails"/> when no envelope is configured.
 /// </summary>
 public class ErrorEnvelopeResultTests
 {
     [Fact]
-    public async Task InjectsConfiguredProperties_IntoErrorEnvelope()
+    public async Task DefaultEnvelope_IsCleanProblemDetails_WhenNotConfigured()
     {
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("traceId", _ => "trace-123");
+        var result = new ErrorEnvelopeResult(
+            new FailureDetails(StatusCodes.Status404NotFound, "nope", "not_found"), options);
 
-        var result = new ErrorEnvelopeResult(ErrorResponse.NotFound("nope", "not_found"), options);
         var capture = await ResultTestHelper.ExecuteAsync(result);
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         var root = doc.RootElement;
-        Assert.Equal(404, root.GetProperty("statusCode").GetInt32());
-        Assert.Equal("trace-123", root.GetProperty("traceId").GetString());
-        Assert.Equal("nope", root.GetProperty("message").GetString());
-        Assert.Equal("not_found", root.GetProperty("errorCode").GetString());
+        Assert.Equal(404, root.GetProperty("status").GetInt32());
+        Assert.Equal("Not Found", root.GetProperty("title").GetString());
+        Assert.Equal("nope", root.GetProperty("detail").GetString());
+        Assert.False(root.TryGetProperty("traceId", out _));
+        Assert.False(root.TryGetProperty("path", out _));
     }
 
     [Fact]
-    public async Task InjectsMultipleProperties()
+    public async Task TypedEnvelope_IsSerializedAsUserType_WithPerRequestFields()
     {
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("traceId", _ => "t1");
-        options.ErrorEnvelope.Add("path", _ => "/orders");
+        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+        {
+            Code = details.Code,
+            Message = details.Message,
+            TraceId = ctx.TraceIdentifier,
+            Path = ctx.Request.Path.ToString(),
+        });
 
-        var result = new ErrorEnvelopeResult(ErrorResponse.BadRequest("bad"), options);
+        var result = new ErrorEnvelopeResult(
+            new FailureDetails(StatusCodes.Status404NotFound, "nope", "not_found"), options);
+        var capture = await ResultTestHelper.ExecuteAsync(result, ctx => ctx.Request.Path = "/orders/42");
+
+        Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
+        using var doc = JsonDocument.Parse(capture.Body);
+        var root = doc.RootElement;
+        Assert.Equal("not_found", root.GetProperty("code").GetString());
+        Assert.Equal("nope", root.GetProperty("message").GetString());
+        Assert.Equal("/orders/42", root.GetProperty("path").GetString());
+        Assert.True(root.TryGetProperty("traceId", out _));
+    }
+
+    [Fact]
+    public async Task TypedEnvelope_WritesStatusFromFailureDetails_NotFromEnvelope()
+    {
+        // The envelope is pure body — the HTTP status comes from FailureDetails.
+        var options = new ResultPatternOptions();
+        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError { Message = details.Message });
+
+        var result = new ErrorEnvelopeResult(
+            new FailureDetails(StatusCodes.Status409Conflict, "conflict"), options);
         var capture = await ResultTestHelper.ExecuteAsync(result);
 
-        using var doc = JsonDocument.Parse(capture.Body);
-        Assert.Equal("t1", doc.RootElement.GetProperty("traceId").GetString());
-        Assert.Equal("/orders", doc.RootElement.GetProperty("path").GetString());
+        Assert.Equal(StatusCodes.Status409Conflict, capture.StatusCode);
     }
 
     [Fact]
-    public async Task PropertyValue_CanComeFromHttpContext()
+    public async Task TypedEnvelope_PropertyCanComeFromHttpContext()
     {
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("path", ctx => ctx.Request.Path.ToString());
+        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+        {
+            Path = ctx.Request.Path.ToString(),
+        });
 
-        var result = new ErrorEnvelopeResult(ErrorResponse.Conflict("conflict"), options);
-        var capture = await ResultTestHelper.ExecuteAsync(
-            result,
-            ctx => ctx.Request.Path = "/orders/5");
+        var result = new ErrorEnvelopeResult(
+            new FailureDetails(StatusCodes.Status404NotFound, "nope"), options);
+        var capture = await ResultTestHelper.ExecuteAsync(result, ctx => ctx.Request.Path = "/orders/5");
 
-        Assert.Equal(StatusCodes.Status409Conflict, capture.StatusCode);
+        Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         Assert.Equal("/orders/5", doc.RootElement.GetProperty("path").GetString());
     }
 
     [Fact]
-    public async Task NullPropertyValue_IsSkipped()
+    public async Task TypedEnvelope_WithValidationErrors_SerializesFieldErrors()
     {
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("traceId", _ => null);
+        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+        {
+            Message = details.Message,
+            FieldErrors = details.Errors,
+        });
 
-        var result = new ErrorEnvelopeResult(ErrorResponse.NotFound("nope"), options);
+        var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
+        var result = new ErrorEnvelopeResult(
+            new FailureDetails(StatusCodes.Status400BadRequest, "Validation Error", errors: errors), options);
         var capture = await ResultTestHelper.ExecuteAsync(result);
 
+        Assert.Equal(StatusCodes.Status400BadRequest, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
-        Assert.False(doc.RootElement.TryGetProperty("traceId", out _));
+        var amount = doc.RootElement.GetProperty("fieldErrors").GetProperty("Amount");
+        Assert.Equal("too small", amount[0].GetString());
+        Assert.Single(amount.EnumerateArray());
     }
 
-    [Fact]
-    public async Task UsesEnvelopeStatusCode_AsResponseStatusCode()
+    /// <summary>A user-defined typed envelope — inherits nothing, serializes fully.</summary>
+    private sealed class AppError
     {
-        var options = new ResultPatternOptions();
-        var result = new ErrorEnvelopeResult(ErrorResponse.UnprocessableEntity("nope"), options);
-        var capture = await ResultTestHelper.ExecuteAsync(result);
-
-        Assert.Equal(StatusCodes.Status422UnprocessableEntity, capture.StatusCode);
-    }
-
-    [Fact]
-    public async Task CustomErrorShape_IsWrittenAsIs_WithInjectedProperties()
-    {
-        // A shape that is not ErrorResponse (e.g. ProblemDetails) must serialize fully,
-        // not just its IErrorResponse interface members.
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("traceId", _ => "trace-1");
-        var envelope = new ProblemDetailsLike
-        {
-            Status = StatusCodes.Status422UnprocessableEntity,
-            Title = "nope",
-        };
-
-        var capture = await ResultTestHelper.ExecuteAsync(
-            new ErrorEnvelopeResult(envelope, options));
-
-        Assert.Equal(StatusCodes.Status422UnprocessableEntity, capture.StatusCode);
-        using var doc = JsonDocument.Parse(capture.Body);
-        var root = doc.RootElement;
-        Assert.Equal("nope", root.GetProperty("title").GetString());
-        Assert.Equal(422, root.GetProperty("status").GetInt32());
-        Assert.Equal("trace-1", root.GetProperty("traceId").GetString());
-    }
-
-    /// <summary>Minimal ProblemDetails-like shape implementing <see cref="IErrorResponse"/>.</summary>
-    private sealed class ProblemDetailsLike : IErrorResponse
-    {
-        public int Status { get; set; }
-        public string? Title { get; set; }
-
-        [JsonExtensionData]
-        public Dictionary<string, JsonElement>? Extensions { get; set; }
-
-        int IErrorResponse.StatusCode => Status;
-
-        public void AddProperty(string name, object? value)
-        {
-            Extensions ??= new Dictionary<string, JsonElement>();
-            Extensions[name] = JsonSerializer.SerializeToElement(value);
-        }
+        public string? Code { get; set; }
+        public string? Message { get; set; }
+        public string? TraceId { get; set; }
+        public string? Path { get; set; }
+        public IReadOnlyDictionary<string, string[]>? FieldErrors { get; set; }
     }
 }

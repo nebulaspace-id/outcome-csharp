@@ -8,12 +8,12 @@ namespace NebulaSpace.Outcome.AspNetCore.Failures;
 /// <summary>HTTP 400 — the request is malformed.</summary>
 public sealed class BadRequestFailure : Failure, IHttpFailure
 {
-    public BadRequestFailure(string message, Dictionary<string, string>? errors = null) : base(message, "bad_request")
+    public BadRequestFailure(string message, IReadOnlyDictionary<string, string[]>? errors = null) : base(message, "bad_request")
     {
         Errors = errors;
     }
 
-    public Dictionary<string, string>? Errors { get; }
+    public IReadOnlyDictionary<string, string[]>? Errors { get; }
 
     public FailureDetails ToDetails() => new(StatusCodes.Status400BadRequest, Message, Code, Errors);
 }

@@ -52,7 +52,7 @@ public class HttpResultTests
     public async Task Ok_WithPagination_IncludesPaginationInEnvelope()
     {
         var factory = ResultTestHelper.CreateFactory();
-        var pagination = Pagination.Pagination.Create(1, 10, 37);
+        var pagination = Pagination.PageInfo.Create(1, 10, 37);
         var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -182,7 +182,7 @@ public class HttpResultTests
     public async Task ErrorHelpers_WithoutMessage_UseFactoryDefaultReasonPhrase()
     {
         // SOLID: the intent (FailureDetails) may omit the message — the shape factory
-        // (DefaultErrorResponseFactory) owns the "default message per status" decision.
+        // The default error envelope owns the "default message per status" decision.
         var factory = ResultTestHelper.CreateFactory();
 
         var capture = await Execute(factory, factory.NotFound());
@@ -193,18 +193,17 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task DefaultErrorBody_OmitsNullDetail_WhenMessageIsNull()
+    public async Task DefaultErrorBody_WritesEmptyDetail_WhenMessageIsNull()
     {
-        // factory.NotFound() has no message -> Detail is null and must not appear in the
-        // body (OutcomeProblemDetails honors [JsonIgnore(WhenWritingNull)] by default,
-        // matching the recommended JSON setup that omits nulls).
+        // factory.NotFound() has no message -> Detail is "" (DefaultProblemDetails is
+        // non-nullable, so detail always appears in the body).
         var factory = ResultTestHelper.CreateFactory();
 
         var capture = await Execute(factory, factory.NotFound());
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.False(json.TryGetProperty("detail", out _));
+        Assert.Equal(string.Empty, json.GetProperty("detail").GetString());
         Assert.Equal("Not Found", json.GetProperty("title").GetString());
     }
 
@@ -252,20 +251,24 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task FromFailure_WithConfiguredProperties_InjectsTraceIdAndPath()
+    public async Task FromFailure_WithConfiguredTypedEnvelope_RendersIt()
     {
-        // Simulates the real AddOutcomeHttp flow: default traceId + path envelope properties.
+        // The real AddOutcomeHttp flow: a typed envelope configured via ErrorEnvelope.Set<T>.
         var factory = ResultTestHelper.CreateFactory(options =>
-        {
-            options.ErrorEnvelope.Add("traceId", ctx => ctx.TraceIdentifier);
-            options.ErrorEnvelope.Add("path", ctx => ctx.Request.Path.ToString());
-        });
+            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+            {
+                Code = details.Code,
+                Message = details.Message,
+                TraceId = ctx.TraceIdentifier,
+                Path = ctx.Request.Path.ToString(),
+            }));
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")), path: "/orders/42");
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.Equal("/orders/42", json.GetProperty("path").GetString());
+        Assert.Equal("not_found", json.GetProperty("code").GetString());
         Assert.True(json.TryGetProperty("traceId", out _));
     }
 
@@ -273,26 +276,33 @@ public class HttpResultTests
     public async Task FromFailure_Validation_MapsTo400()
     {
         var factory = ResultTestHelper.CreateFactory();
-        var errors = new Dictionary<string, string> { ["Amount"] = "too small" };
+        var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
         var capture = await Execute(factory, factory.FromFailure(new ValidationFailure("Invalid", errors)));
 
         Assert.Equal(StatusCodes.Status400BadRequest, capture.StatusCode);
     }
 
     [Fact]
-    public async Task CustomErrorShapeFactory_CanAddErrorCodeAndErrors()
+    public async Task CustomTypedEnvelope_CanAddErrorCodeAndErrors()
     {
-        // The default body is clean; a custom IErrorResponseFactory decides to add
-        // errorCode / errors on top of ProblemDetails — the pluggable path.
-        var factory = ResultTestHelper.CreateFactory(new ErrorsProblemDetailsFactory());
+        // The default body is clean; a typed envelope decides to add code / field errors.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+            {
+                Code = details.Code,
+                Message = details.Message,
+                FieldErrors = details.Errors,
+            }));
 
-        var errors = new Dictionary<string, string> { ["Amount"] = "too small" };
+        var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
         var capture = await Execute(factory, factory.FromFailure(new ValidationFailure("Invalid", errors)));
 
         Assert.Equal(StatusCodes.Status400BadRequest, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal("validation", json.GetProperty("errorCode").GetString());
-        Assert.Equal("too small", json.GetProperty("errors").GetProperty("Amount").GetString());
+        Assert.Equal("validation", json.GetProperty("code").GetString());
+        var amount = json.GetProperty("fieldErrors").GetProperty("Amount");
+        Assert.Equal("too small", amount[0].GetString());
+        Assert.Single(amount.EnumerateArray());
     }
 
     [Fact]
@@ -338,13 +348,14 @@ public class HttpResultTests
     {
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Failures.Map<QuotaStub>(f =>
-                ErrorResponse.UnprocessableEntity(f.Message, f.Code)));
+                new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new QuotaStub("over limit")));
 
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal("over limit", json.GetProperty("message").GetString());
+        Assert.Equal("over limit", json.GetProperty("detail").GetString());
+        Assert.Equal(422, json.GetProperty("status").GetInt32());
     }
 
     [Fact]
@@ -353,13 +364,13 @@ public class HttpResultTests
         // Section-based API: options.Failures.Map<T>(...).
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Failures.Map<QuotaStub>(f =>
-                ErrorResponse.UnprocessableEntity(f.Message, f.Code)));
+                new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new QuotaStub("over limit")));
 
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal("over limit", json.GetProperty("message").GetString());
+        Assert.Equal("over limit", json.GetProperty("detail").GetString());
     }
 
     [Fact]
@@ -368,7 +379,7 @@ public class HttpResultTests
         // NotFoundFailure implements IHttpFailure; an explicit Failures.Map must win.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Failures.Map<NotFoundFailure>(f =>
-                ErrorResponse.UnprocessableEntity(f.Message, f.Code)));
+                new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")));
 
@@ -381,39 +392,43 @@ public class HttpResultTests
         // DerivedQuota inherits QuotaStub; the mapper registered for QuotaStub must apply.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Failures.Map<QuotaStub>(f =>
-                ErrorResponse.UnprocessableEntity(f.Message, f.Code)));
+                new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new DerivedQuota("over limit")));
 
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal("over limit", json.GetProperty("message").GetString());
+        Assert.Equal("over limit", json.GetProperty("detail").GetString());
     }
 
     [Fact]
-    public async Task FromFailure_WithCustomErrorShapeFactory_ProducesProblemDetails()
+    public async Task FromFailure_WithCustomTypedEnvelope_RendersIt()
     {
-        // Replacing IErrorResponseFactory changes the shape of every error response —
-        // here to RFC 7807 ProblemDetails — while per-request properties still inject.
+        // ErrorEnvelope.Set<T> changes the shape of every error response — here a typed
+        // body with an errorCode — while the status still comes from the failure.
         var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Add("traceId", ctx => ctx.TraceIdentifier);
-        var factory = new HttpResultFactory(options, new ProblemDetailsErrorResponseFactory());
+        options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+        {
+            Code = details.Code,
+            Message = details.Message,
+            TraceId = ctx.TraceIdentifier,
+        });
+        var factory = new HttpResultFactory(options);
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")));
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal("Not Found", json.GetProperty("title").GetString());
-        Assert.Equal("Missing", json.GetProperty("detail").GetString());
-        Assert.Equal(404, json.GetProperty("status").GetInt32());
-        Assert.True(json.TryGetProperty("traceId", out _)); // still injected
+        Assert.Equal("Missing", json.GetProperty("message").GetString());
+        Assert.Equal("not_found", json.GetProperty("code").GetString());
+        Assert.True(json.TryGetProperty("traceId", out _)); // per-request field, typed
     }
 
     [Fact]
     public async Task AddOutcomeHttp_ProducesCleanProblemDetails_ByDefault()
     {
-        // v0.4.0: AddOutcomeHttp alone (no Replace) now yields RFC 7807 ProblemDetails
-        // with a clean body — no traceId/path unless configured.
+        // AddOutcomeHttp alone yields RFC 7807 ProblemDetails with a clean body —
+        // no traceId/path unless a typed envelope is configured.
         var services = new ServiceCollection();
         services.AddOutcomeHttp();
 
@@ -430,13 +445,17 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task AddOutcomeHttp_ReplaceFactory_ChangesEveryErrorShape()
+    public async Task AddOutcomeHttp_WithConfiguredTypedEnvelope_RendersIt()
     {
-        // Replace() swaps the shape for ALL error helpers: swap to a legacy
-        // ErrorResponse-style body and verify FromFailure follows.
+        // Everything is configured at AddOutcomeHttp — no Replace needed to change the
+        // error shape.
         var services = new ServiceCollection();
-        services.AddOutcomeHttp();
-        services.Replace(ServiceDescriptor.Singleton<IErrorResponseFactory, LegacyErrorResponseFactory>());
+        services.AddOutcomeHttp(options =>
+            options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+            {
+                Code = details.Code,
+                Message = details.Message,
+            }));
 
         await using var provider = services.BuildServiceProvider();
         var factory = provider.GetRequiredService<IHttpResultFactory>();
@@ -446,72 +465,7 @@ public class HttpResultTests
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.Equal("Missing", json.GetProperty("message").GetString());
-        Assert.Equal("not_found", json.GetProperty("errorCode").GetString());
-    }
-
-    /// <summary>RFC 7807 ProblemDetails-style error shape via the pluggable factory.</summary>
-    private sealed class ProblemDetailsErrorResponseFactory : IErrorResponseFactory
-    {
-        public IErrorResponse Create(FailureDetails details) => new ProblemDetailsLike
-        {
-            Status = details.StatusCode,
-            Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
-            Detail = details.Message,
-            ErrorCode = details.Code,
-        };
-    }
-
-    private sealed class ProblemDetailsLike : IErrorResponse
-    {
-        public int Status { get; set; }
-        public string? Title { get; set; }
-        public string? Detail { get; set; }
-        public string? ErrorCode { get; set; }
-
-        [JsonExtensionData]
-        public Dictionary<string, JsonElement>? Extensions { get; set; }
-
-        int IErrorResponse.StatusCode => Status;
-
-        public void AddProperty(string name, object? value)
-        {
-            Extensions ??= new Dictionary<string, JsonElement>();
-            Extensions[name] = JsonSerializer.SerializeToElement(value);
-        }
-    }
-
-    /// <summary>Default shape + adds errorCode / field errors on top of ProblemDetails.</summary>
-    private sealed class ErrorsProblemDetailsFactory : IErrorResponseFactory
-    {
-        public IErrorResponse Create(FailureDetails details)
-        {
-            var problemDetails = new OutcomeProblemDetails
-            {
-                Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
-                Status = details.StatusCode,
-                Detail = details.Message,
-            };
-            if (details.Code is not null)
-            {
-                problemDetails.Extensions["errorCode"] = details.Code;
-            }
-            if (details.Errors is { } errors)
-            {
-                problemDetails.Extensions["errors"] = errors;
-            }
-            return problemDetails;
-        }
-    }
-
-    /// <summary>Legacy ErrorResponse-style body, used to prove Replace() changes the shape.</summary>
-    private sealed class LegacyErrorResponseFactory : IErrorResponseFactory
-    {
-        public IErrorResponse Create(FailureDetails details) => new ErrorResponse
-        {
-            StatusCode = details.StatusCode,
-            Message = details.Message ?? ReasonPhrases.GetReasonPhrase(details.StatusCode),
-            ErrorCode = details.Code,
-        };
+        Assert.Equal("not_found", json.GetProperty("code").GetString());
     }
 
     private sealed class UnknownFailureStub : Failure
@@ -527,5 +481,15 @@ public class HttpResultTests
     private sealed class DerivedQuota : QuotaStub
     {
         public DerivedQuota(string message) : base(message) { }
+    }
+
+    /// <summary>A user-defined typed error envelope — inherits nothing, serializes fully.</summary>
+    private sealed class AppError
+    {
+        public string? Code { get; set; }
+        public string? Message { get; set; }
+        public string? TraceId { get; set; }
+        public string? Path { get; set; }
+        public IReadOnlyDictionary<string, string[]>? FieldErrors { get; set; }
     }
 }

@@ -33,10 +33,6 @@ internal static class ResultTestHelper
         return new HttpResultFactory(options);
     }
 
-    /// <summary>Creates a fresh factory with a custom error-shape strategy.</summary>
-    public static HttpResultFactory CreateFactory(IErrorResponseFactory errorResponseFactory) =>
-        new(new ResultPatternOptions(), errorResponseFactory);
-
     /// <summary>Executes an IResult and captures status code, body, and Location header.</summary>
     public static async Task<ResultCapture> ExecuteAsync(
         IResult result,

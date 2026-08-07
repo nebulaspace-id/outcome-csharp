@@ -1,24 +1,56 @@
 using Microsoft.AspNetCore.Http;
+using NebulaSpace.Outcome.AspNetCore.Models;
 
 namespace NebulaSpace.Outcome.AspNetCore.Options;
 
 /// <summary>
-/// Configuration for the error envelope: the per-request properties injected into every
-/// error response the library produces (via <c>IErrorResponse.AddProperty</c> at execution
-/// time). Properties registered here appear ONLY on error responses — never on success
-/// responses. By default none are registered; the body is clean RFC 7807
-/// <see cref="Models.OutcomeProblemDetails"/>.
+/// Configuration for the error envelope: the TYPE and how it is built from a failure's
+/// HTTP intent plus the current request. The envelope can be any class — it inherits
+/// nothing from the library. Because the serialized body IS that type, OpenAPI
+/// (<c>.Produces&lt;TEnvelope&gt;()</c>) documents the exact error shape, and per-request
+/// fields (<c>traceId</c>, <c>path</c>, custom) are real C# properties, not runtime
+/// dictionary keys.
+///
+/// By default no envelope is configured and the library falls back to the clean RFC 7807
+/// <see cref="DefaultProblemDetails"/> (title/status/detail only).
 /// </summary>
 public sealed class ErrorEnvelopeOptions
 {
-    /// <summary>Registered property factories, keyed by JSON property name.</summary>
-    internal Dictionary<string, Func<HttpContext, object?>> Properties { get; } = new();
+    /// <summary>
+    /// The configured envelope type, or <c>null</c> when the default RFC 7807
+    /// <see cref="DefaultProblemDetails"/> is used.
+    /// </summary>
+    internal Type? EnvelopeType { get; private set; }
 
     /// <summary>
-    /// Registers a property that will be injected into every error envelope response.
-    /// The <paramref name="valueFactory"/> runs per request, so values can depend on the
-    /// current <see cref="HttpContext"/> (e.g. <c>ctx.TraceIdentifier</c>).
+    /// Builds a concrete envelope instance from the failure's HTTP intent and the current
+    /// request. Present only when <see cref="EnvelopeType"/> is set.
     /// </summary>
-    public void Add(string propertyName, Func<HttpContext, object?> valueFactory)
-        => Properties[propertyName] = valueFactory;
+    internal Func<FailureDetails, HttpContext, object>? Factory { get; private set; }
+
+    /// <summary>
+    /// Sets the error envelope: a concrete type <typeparamref name="TEnvelope"/>,
+    /// built by <paramref name="factory"/> from the failure's HTTP intent
+    /// (<see cref="FailureDetails"/>) and the current <see cref="HttpContext"/>.
+    /// The returned instance is serialized as-is (HTTP status written separately from
+    /// <c>FailureDetails.StatusCode</c>). Example — pass a method group directly, the
+    /// type is inferred:
+    /// <code>
+    /// options.ErrorEnvelope.Set(ErrorResponse.From);
+    /// </code>
+    /// or inline:
+    /// <code>
+    /// options.ErrorEnvelope.Set((details, ctx) => new ErrorResponse
+    /// {
+    ///     Code = details.Code,
+    ///     Message = details.Message,
+    ///     TraceId = ctx.TraceIdentifier,
+    /// });
+    /// </code>
+    /// </summary>
+    public void Set<TEnvelope>(Func<FailureDetails, HttpContext, TEnvelope> factory)
+    {
+        EnvelopeType = typeof(TEnvelope);
+        Factory = (details, ctx) => factory(details, ctx)!;
+    }
 }

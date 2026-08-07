@@ -4,7 +4,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// A single page of items together with the total count across all pages.
 /// The page number and page size live on the incoming <see cref="PageQuery"/>,
 /// so this type carries only the raw count and lets callers build their own
-/// <see cref="Pagination"/> metadata.
+/// <see cref="PageInfo"/> metadata.
 /// </summary>
 public sealed class PagedResult<T>
 {

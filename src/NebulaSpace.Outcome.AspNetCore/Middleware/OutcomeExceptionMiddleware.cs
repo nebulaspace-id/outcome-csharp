@@ -48,11 +48,12 @@ public sealed class OutcomeExceptionMiddleware : IMiddleware
 
             context.Response.Clear();
 
-            // 1. An explicit mapping via options.Exceptions.Map<TException> wins — the
-            //    envelope it returns is authoritative (bypasses IncludeExceptionDetails).
+            // 1. An explicit mapping via options.Exceptions.Map<TException> wins — it
+            //    returns the failure's HTTP INTENT, which the configured error envelope
+            //    renders (bypasses IncludeExceptionDetails).
             if (_options.TryGetExceptionMapper(ex.GetType(), out var mapper))
             {
-                await _resultFactory.FromEnvelope(mapper(ex)).ExecuteAsync(context);
+                await _resultFactory.FromFailureDetails(mapper(ex)).ExecuteAsync(context);
                 return;
             }
 
@@ -83,11 +84,11 @@ public sealed class OutcomeExceptionHandlerOptions
     public bool IncludeExceptionDetails { get; set; }
 
     /// <summary>
-    /// Configuration for mapping exception types to concrete error envelopes. Use
-    /// <see cref="ExceptionMappingOptions.Map{T}"/> to register a mapper:
-    /// <c>options.Exceptions.Map&lt;DomainException&gt;(ex =&gt; ErrorResponse.UnprocessableEntity(ex.Message))</c>.
-    /// Mapped exceptions bypass the generic 500 fallback (and its
-    /// <see cref="IncludeExceptionDetails"/> gating).
+    /// Configuration for mapping exception types to HTTP intent (<see cref="FailureDetails"/>).
+    /// Use <see cref="ExceptionMappingOptions.Map{T}"/> to register a mapper:
+    /// <c>options.Exceptions.Map&lt;DomainException&gt;(ex =&gt; new FailureDetails(422, ex.Message, ex.Code))</c>.
+    /// The configured error envelope renders the intent. Mapped exceptions bypass the
+    /// generic 500 fallback (and its <see cref="IncludeExceptionDetails"/> gating).
     /// </summary>
     public ExceptionMappingOptions Exceptions { get; } = new();
 
@@ -96,7 +97,7 @@ public sealed class OutcomeExceptionHandlerOptions
     /// so a subclass of a registered exception type inherits that exception's mapping.
     /// Returns the mapper registered for the nearest ancestor (most derived).
     /// </summary>
-    internal bool TryGetExceptionMapper(Type type, out Func<Exception, IErrorResponse> mapper)
+    internal bool TryGetExceptionMapper(Type type, out Func<Exception, FailureDetails> mapper)
     {
         for (var current = type; current is not null && current != typeof(Exception); current = current.BaseType!)
         {

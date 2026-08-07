@@ -8,6 +8,7 @@ using NebulaSpace.Outcome.AspNetCore.Extensions;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
 using NebulaSpace.Outcome.AspNetCore.Models;
+using NebulaSpace.Outcome.AspNetCore.Options;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Integration;
 
@@ -21,14 +22,23 @@ public class OutcomeExceptionMiddlewareTests
     private static async Task<TestHostScope> CreateHost(
         Action<IServiceCollection>? configureServices = null,
         RequestDelegate? endpoint = null,
-        bool useMiddleware = true)
+        bool useMiddleware = true,
+        bool typedEnvelope = false)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
 
         builder.Services.AddOutcomeHttp(options =>
         {
-            options.ErrorEnvelope.Add("traceId", ctx => ctx.TraceIdentifier);
+            if (typedEnvelope)
+            {
+                options.ErrorEnvelope.Set<AppError>((details, ctx) => new AppError
+                {
+                    Message = details.Message,
+                    Code = details.Code,
+                    TraceId = ctx.TraceIdentifier,
+                });
+            }
         });
         configureServices?.Invoke(builder.Services);
         if (useMiddleware)
@@ -72,7 +82,8 @@ public class OutcomeExceptionMiddlewareTests
         Assert.Equal("Internal Server Error", root.GetProperty("title").GetString());
         Assert.Equal(500, root.GetProperty("status").GetInt32());
         Assert.Equal("An error occurred while processing your request.", root.GetProperty("detail").GetString());
-        Assert.True(root.TryGetProperty("traceId", out _)); // envelope property injected
+        // No typed envelope configured → clean RFC 7807 body, no traceId.
+        Assert.False(root.TryGetProperty("traceId", out _));
     }
 
     [Fact]
@@ -137,8 +148,9 @@ public class OutcomeExceptionMiddlewareTests
         await using var scope = await CreateHost(
             configureServices: services => services.AddOutcomeExceptionHandler(o =>
                 o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    ErrorResponse.UnprocessableEntity(ex.Message, ex.Code))),
-            endpoint: _ => throw new DomainExceptionStub("order blocked", "domain"));
+                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code))),
+            endpoint: _ => throw new DomainExceptionStub("order blocked", "domain"),
+            typedEnvelope: true);
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -146,19 +158,20 @@ public class OutcomeExceptionMiddlewareTests
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
         Assert.Equal("order blocked", root.GetProperty("message").GetString());
-        Assert.Equal("domain", root.GetProperty("errorCode").GetString());
+        Assert.Equal("domain", root.GetProperty("code").GetString());
     }
 
     [Fact]
     public async Task MappedException_BypassesIncludeExceptionDetailsGating()
     {
         // IncludeExceptionDetails=false is ignored for mapped exceptions: the mapper's
-        // envelope is authoritative, even though it leaks ex.Message (here, intentionally).
+        // intent is authoritative, even though it leaks ex.Message (here, intentionally).
         await using var scope = await CreateHost(
             configureServices: services => services.AddOutcomeExceptionHandler(o =>
                 o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    ErrorResponse.UnprocessableEntity(ex.Message))),
-            endpoint: _ => throw new DomainExceptionStub("SECRET mapped detail", "domain"));
+                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message))),
+            endpoint: _ => throw new DomainExceptionStub("SECRET mapped detail", "domain"),
+            typedEnvelope: true);
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -173,14 +186,16 @@ public class OutcomeExceptionMiddlewareTests
     {
         await using var scope = await CreateHost(
             configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex => ErrorResponse.NotFound(ex.Message))),
-            endpoint: _ => throw new DomainExceptionStub("nope", "domain"));
+                o.Exceptions.Map<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status404NotFound, ex.Message))),
+            endpoint: _ => throw new DomainExceptionStub("nope", "domain"),
+            typedEnvelope: true);
 
         using var response = await scope.Client.GetAsync("/");
 
         Assert.Equal(StatusCodes.Status404NotFound, (int)response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        // traceId envelope property registered in CreateHost still injects.
+        // traceId envelope property registered in CreateHost still appears.
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
     }
 
@@ -191,8 +206,10 @@ public class OutcomeExceptionMiddlewareTests
         // DomainExceptionStub must apply.
         await using var scope = await CreateHost(
             configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex => ErrorResponse.Conflict(ex.Message))),
-            endpoint: _ => throw new DerivedDomainExceptionStub("conflict", "conflict_code"));
+                o.Exceptions.Map<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status409Conflict, ex.Message))),
+            endpoint: _ => throw new DerivedDomainExceptionStub("conflict", "conflict_code"),
+            typedEnvelope: true);
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -237,5 +254,13 @@ public class OutcomeExceptionMiddlewareTests
     private sealed class DerivedDomainExceptionStub : DomainExceptionStub
     {
         public DerivedDomainExceptionStub(string message, string code) : base(message, code) { }
+    }
+
+    /// <summary>A user-defined typed error envelope used by the test host.</summary>
+    private sealed class AppError
+    {
+        public string? Message { get; set; }
+        public string? Code { get; set; }
+        public string? TraceId { get; set; }
     }
 }

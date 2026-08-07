@@ -2,12 +2,12 @@ using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
-public class PaginationTests
+public class PageInfoTests
 {
     [Fact]
     public void Create_ComputesTotalPages()
     {
-        var p = Pagination.Pagination.Create(page: 1, pageSize: 10, totalItems: 37);
+        var p = Pagination.PageInfo.Create(page: 1, pageSize: 10, totalItems: 37);
 
         Assert.Equal(1, p.Page);
         Assert.Equal(10, p.PageSize);
@@ -18,7 +18,7 @@ public class PaginationTests
     [Fact]
     public void Create_WhenTotalItemsIsMultiple_TotalPagesIsExact()
     {
-        var p = Pagination.Pagination.Create(page: 2, pageSize: 10, totalItems: 20);
+        var p = Pagination.PageInfo.Create(page: 2, pageSize: 10, totalItems: 20);
 
         Assert.Equal(2, p.TotalPages);
     }
@@ -26,7 +26,7 @@ public class PaginationTests
     [Fact]
     public void Create_WhenTotalItemsIsZero_TotalPagesIsZero()
     {
-        var p = Pagination.Pagination.Create(page: 1, pageSize: 10, totalItems: 0);
+        var p = Pagination.PageInfo.Create(page: 1, pageSize: 10, totalItems: 0);
 
         Assert.Equal(0, p.TotalPages);
         Assert.Equal(0, p.TotalItems);
@@ -36,7 +36,7 @@ public class PaginationTests
     public void Create_FromPageQuery_UsesPageQueryValues()
     {
         var query = new PageQuery { Page = 3, PageSize = 5 };
-        var p = Pagination.Pagination.Create(query, totalItems: 42);
+        var p = Pagination.PageInfo.Create(query, totalItems: 42);
 
         Assert.Equal(3, p.Page);
         Assert.Equal(5, p.PageSize);
@@ -46,7 +46,7 @@ public class PaginationTests
     [Fact]
     public void Create_WhenPageSizeExceedsTotal_OnePage()
     {
-        var p = Pagination.Pagination.Create(page: 1, pageSize: 100, totalItems: 37);
+        var p = Pagination.PageInfo.Create(page: 1, pageSize: 100, totalItems: 37);
 
         Assert.Equal(1, p.TotalPages);
     }
