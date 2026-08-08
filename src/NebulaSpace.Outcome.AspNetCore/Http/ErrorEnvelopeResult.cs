@@ -7,34 +7,35 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// An <see cref="IResult"/> that writes an error envelope. When a typed envelope is
-/// configured (<c>options.ErrorEnvelope.Set(typeof(MyError))</c>), the body is the user-defined
-/// type, built from the failure's HTTP intent (<see cref="FailureDetails"/>) and the
-/// current <see cref="HttpContext"/>, and serialized as-is — so OpenAPI documents the
-/// exact shape. Otherwise the default RFC 7807 <see cref="DefaultProblemDetails"/>
+/// configured (<c>options.Error.SetResponse(typeof(MyError))</c>), the body is the
+/// user‑defined type, built from the failure's HTTP intent (<see cref="FailureDetails"/>)
+/// and the current <see cref="HttpContext"/>, and serialized as‑is — so OpenAPI documents
+/// the exact shape. Otherwise the default RFC 7807 <see cref="DefaultProblemDetails"/>
 /// is written. The HTTP status always comes from <see cref="FailureDetails.StatusCode"/>.
 /// </summary>
 public sealed class ErrorEnvelopeResult : IResult
 {
     private readonly FailureDetails _details;
-    private readonly ResultPatternOptions _options;
+    private readonly OutcomeOptions _options;
 
-    public ErrorEnvelopeResult(FailureDetails details, ResultPatternOptions options)
+    public ErrorEnvelopeResult(FailureDetails details, OutcomeOptions options)
     {
         _details = details;
         _options = options;
     }
 
+    /// <inheritdoc />
     public Task ExecuteAsync(HttpContext httpContext) =>
         ExecuteAsync(httpContext, httpContext.RequestAborted);
 
     /// <summary>
     /// Writes the error envelope, honoring <paramref name="cancellationToken"/> so a
-    /// client that disconnects mid-write doesn't waste the serialization work. Falls back
+    /// client that disconnects mid‑write doesn't waste the serialization work. Falls back
     /// to <see cref="HttpContext.RequestAborted"/> when called through the interface.
     /// </summary>
     public async Task ExecuteAsync(HttpContext httpContext, CancellationToken cancellationToken)
     {
-        object envelope = _options.ErrorEnvelopeFactory is { } factory
+        object envelope = _options.ErrorFactory is { } factory
             ? factory(_details, httpContext)
             : BuildDefaultProblemDetails(_details);
 

@@ -20,27 +20,19 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Integration;
 public class OutcomeExceptionMiddlewareTests
 {
     private static async Task<TestHostScope> CreateHost(
+        Action<OutcomeOptions>? configureOutcome = null,
         Action<IServiceCollection>? configureServices = null,
         RequestDelegate? endpoint = null,
-        bool useMiddleware = true,
-        bool typedEnvelope = false)
+        bool useMiddleware = true)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
 
-        builder.Services.AddOutcomeHttp(options =>
+        builder.Services.AddOutcome(options =>
         {
-            if (typedEnvelope)
-            {
-                options.ErrorEnvelope.Set(typeof(AppError));
-            }
+            configureOutcome?.Invoke(options);
         });
         configureServices?.Invoke(builder.Services);
-        if (useMiddleware)
-        {
-            // Idempotent: no-op if configureServices already registered it.
-            builder.Services.AddOutcomeExceptionHandler();
-        }
 
         var app = builder.Build();
 
@@ -53,15 +45,6 @@ public class OutcomeExceptionMiddlewareTests
         await app.StartAsync();
 
         return new TestHostScope(app, app.GetTestClient());
-    }
-
-    private static async Task<HttpResponseMessage> SendAsync(
-        Action<IServiceCollection>? configureServices = null,
-        RequestDelegate? endpoint = null,
-        bool useMiddleware = true)
-    {
-        await using var scope = await CreateHost(configureServices, endpoint, useMiddleware);
-        return await scope.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/"));
     }
 
     [Fact]
@@ -84,7 +67,8 @@ public class OutcomeExceptionMiddlewareTests
     [Fact]
     public async Task UnhandledException_DoesNotLeakExceptionMessage_ByDefault()
     {
-        await using var scope = await CreateHost(endpoint: _ => throw new InvalidOperationException("SECRET-internal-detail"));
+        await using var scope = await CreateHost(
+            endpoint: _ => throw new InvalidOperationException("SECRET-internal-detail"));
         using var response = await scope.Client.GetAsync("/");
 
         Assert.Equal(StatusCodes.Status500InternalServerError, (int)response.StatusCode);
@@ -99,7 +83,7 @@ public class OutcomeExceptionMiddlewareTests
     public async Task IncludeExceptionDetails_RevealsMessage()
     {
         await using var scope = await CreateHost(
-            configureServices: services => services.AddOutcomeExceptionHandler(o => o.IncludeExceptionDetails = true),
+            configureOutcome: o => o.Error.IncludeExceptionDetails = true,
             endpoint: _ => throw new InvalidOperationException("boom detail"));
         using var response = await scope.Client.GetAsync("/");
 
@@ -135,17 +119,19 @@ public class OutcomeExceptionMiddlewareTests
             () => scope.Client.GetAsync("/"));
     }
 
-    // --- Mapped exceptions (options.Exceptions.Map<TException>) ---
+    // --- Mapped exceptions (options.Error.MapException<TException>) ---
 
     [Fact]
     public async Task MappedException_ReturnsCustomEnvelope()
     {
         await using var scope = await CreateHost(
-            configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code))),
-            endpoint: _ => throw new DomainExceptionStub("order blocked", "domain"),
-            typedEnvelope: true);
+            configureOutcome: o =>
+            {
+                o.Error.SetResponse<AppError>();
+                o.Error.MapException<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code));
+            },
+            endpoint: _ => throw new DomainExceptionStub("order blocked", "domain"));
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -162,11 +148,13 @@ public class OutcomeExceptionMiddlewareTests
         // IncludeExceptionDetails=false is ignored for mapped exceptions: the mapper's
         // intent is authoritative, even though it leaks ex.Message (here, intentionally).
         await using var scope = await CreateHost(
-            configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message))),
-            endpoint: _ => throw new DomainExceptionStub("SECRET mapped detail", "domain"),
-            typedEnvelope: true);
+            configureOutcome: o =>
+            {
+                o.Error.SetResponse<AppError>();
+                o.Error.MapException<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message));
+            },
+            endpoint: _ => throw new DomainExceptionStub("SECRET mapped detail", "domain"));
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -180,11 +168,13 @@ public class OutcomeExceptionMiddlewareTests
     public async Task MappedException_StillGetsEnvelopeProperties()
     {
         await using var scope = await CreateHost(
-            configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    new FailureDetails(StatusCodes.Status404NotFound, ex.Message))),
-            endpoint: _ => throw new DomainExceptionStub("nope", "domain"),
-            typedEnvelope: true);
+            configureOutcome: o =>
+            {
+                o.Error.SetResponse<AppError>();
+                o.Error.MapException<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status404NotFound, ex.Message));
+            },
+            endpoint: _ => throw new DomainExceptionStub("nope", "domain"));
 
         using var response = await scope.Client.GetAsync("/");
 
@@ -200,11 +190,13 @@ public class OutcomeExceptionMiddlewareTests
         // DerivedDomainException inherits DomainExceptionStub; the mapper registered for
         // DomainExceptionStub must apply.
         await using var scope = await CreateHost(
-            configureServices: services => services.AddOutcomeExceptionHandler(o =>
-                o.Exceptions.Map<DomainExceptionStub>(ex =>
-                    new FailureDetails(StatusCodes.Status409Conflict, ex.Message))),
-            endpoint: _ => throw new DerivedDomainExceptionStub("conflict", "conflict_code"),
-            typedEnvelope: true);
+            configureOutcome: o =>
+            {
+                o.Error.SetResponse<AppError>();
+                o.Error.MapException<DomainExceptionStub>(ex =>
+                    new FailureDetails(StatusCodes.Status409Conflict, ex.Message));
+            },
+            endpoint: _ => throw new DerivedDomainExceptionStub("conflict", "conflict_code"));
 
         using var response = await scope.Client.GetAsync("/");
 

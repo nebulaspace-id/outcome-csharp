@@ -47,7 +47,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Result Samples API",
         Version = "v1",
-        Description = "Example API using the Result pattern.",
+Description = "Example API using the Result pattern.",
     });
 });
 
@@ -63,7 +63,7 @@ builder.Services.AddRateLimiter(options =>
     {
         // Build the SAME ErrorResponse envelope as every other error, honoring the
         // cancellation token so a disconnecting client skips the serialization work.
-        var resultOptions = context.HttpContext.RequestServices.GetRequiredService<ResultPatternOptions>();
+        var resultOptions = context.HttpContext.RequestServices.GetRequiredService<OutcomeOptions>();
         var details = new FailureDetails(
             StatusCodes.Status429TooManyRequests,
             message: "Too many requests. Try again later.",
@@ -85,33 +85,48 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 
-// Result pattern options
-builder.Services.AddOutcomeHttp(options =>
+// Outcome ASP.NET Core integration — success envelope, error envelope, failure/exception
+// mappers, and exception-handling middleware, all in one call.
+builder.Services.AddOutcome(options =>
 {
-    // Success envelope — any type the app defines, serialized as-is, so
-    // .Produces<SuccessResponse<T>>() documents the exact success shape per endpoint.
-    // Pass the OPEN generic type; the library closes T per request. The type must
-    // implement ISuccessEnvelope<T> so the library can build it (fail-fast at startup).
-    options.SuccessEnvelope.Set(typeof(SuccessResponse<>));
+    // ──────────────────────────────────────────────────────────────────
+    // AOT‑safe, zero‑reflection non‑generic envelope (commented out).
+    // Implements ISuccessEnvelope with From(SuccessDetails, HttpContext)
+    // — the library dispatches through static abstract directly.
+    // WARNING: Swagger sees Data as object, not the actual payload type.
+    // Uncomment for NativeAOT; keep the open‑generic below for JIT.
+    //
+    //   options.Success.SetResponse<SuccessResponse>();
+    //   .Produces<SuccessResponse>()
+    //
+    //   // SuccessResponse is already defined in Failures/:
+    //   // public sealed class SuccessResponse : ISuccessEnvelope
+    //   // {
+    //   //     public static ISuccessEnvelope From(SuccessDetails details, HttpContext http) => ...
+    //   // }
+    // ──────────────────────────────────────────────────────────────────
+
+    // Open‑generic success envelope — closes T per request via
+    // MakeGenericType + cached MethodInfo.Invoke, so Swagger documents
+    // Data: Order / Data: GreetingResponse / etc. per endpoint.
+    // NOT AOT‑safe — switch to the commented non‑generic overload above
+    // when publishing NativeAOT.
+    options.Success.SetResponse(typeof(SuccessResponse<>));
 
     // The error envelope is any type the app defines — serialized as-is, so
-    // .Produces<ErrorResponse>() documents the exact body. The type must implement
-    // IErrorEnvelope so the library can build it (fail-fast at startup).
-    options.ErrorEnvelope.Set(typeof(ErrorResponse));
+    // .Produces<ErrorResponse>() documents the exact body. The generic Set<T> is
+    // compile-time safe, AOT-ready, and zero-reflection — it dispatches through
+    // IErrorEnvelope.From directly with a static abstract call.
+    options.Error.SetResponse<ErrorResponse>();
 
     // Map application-defined failures to HTTP intent (FailureDetails) — the one
     // ErrorResponse shape renders EVERY error, including mapped failures.
-    options.Failures.Map<QuotaExceededFailure>(f =>
+    options.Error.MapFailure<QuotaExceededFailure>(f =>
         new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
-});
 
-// Unhandled exceptions → the same error envelope (status 500) as expected failures.
-// Register first, then UseOutcomeExceptionHandler() in the pipeline.
-builder.Services.AddOutcomeExceptionHandler(options =>
-{
     // Exception mappers return HTTP INTENT (FailureDetails), not an envelope — the one
     // ErrorResponse shape renders every exception too. E.g. a domain exception becomes 422:
-    options.Exceptions.Map<DomainException>(ex =>
+    options.Error.MapException<DomainException>(ex =>
         new FailureDetails(
             statusCode: StatusCodes.Status422UnprocessableEntity,
             message: ex.Message,
@@ -121,7 +136,7 @@ builder.Services.AddOutcomeExceptionHandler(options =>
     // FluentValidation failures → 400 Bad Request with field errors. Per RFC 9457 each
     // field maps to an ARRAY of messages — one message is a single-element array, several
     // become a longer array. Errors come from the instance.
-    options.Exceptions.Map<ValidationException>(ex =>
+    options.Error.MapException<ValidationException>(ex =>
         new FailureDetails(
             statusCode: StatusCodes.Status400BadRequest,
             message: "Validation Error",
@@ -131,7 +146,7 @@ builder.Services.AddOutcomeExceptionHandler(options =>
                 .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())));
 
     // Only in Development should UNHANDLED exception details leak into the response body.
-    options.IncludeExceptionDetails = builder.Environment.IsDevelopment();
+    options.Error.IncludeExceptionDetails = builder.Environment.IsDevelopment();
 });
 
 // Services

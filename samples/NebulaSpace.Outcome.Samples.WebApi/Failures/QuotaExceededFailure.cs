@@ -2,7 +2,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Failures;
 
 /// <summary>
 /// Example of an application-defined failure, mapped to an HTTP response
-/// via <c>options.Failures.Map</c> in Program.cs.
+/// via <c>options.Error.MapFailure</c> in Program.cs.
 /// </summary>
 public sealed class QuotaExceededFailure : Failure
 {

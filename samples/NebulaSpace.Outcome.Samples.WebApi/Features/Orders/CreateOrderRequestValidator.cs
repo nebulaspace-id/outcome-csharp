@@ -6,7 +6,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Orders;
 /// Validates an incoming <see cref="CreateOrderRequest"/> with FluentValidation. When the
 /// request is invalid, the validator throws a <see cref="ValidationException"/> that is
 /// caught by the exception-handling middleware and mapped to a 400 Bad Request with the
-/// field errors (via <c>options.Exceptions.Map</c> in Program.cs).
+/// field errors (via <c>options.Error.MapException</c> in Program.cs).
 /// </summary>
 public sealed class CreateOrderRequestValidator : AbstractValidator<CreateOrderRequest>
 {

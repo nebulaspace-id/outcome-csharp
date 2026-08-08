@@ -8,20 +8,26 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// <summary>
 /// Default <see cref="IHttpResultFactory"/> that builds ASP.NET Core <see cref="IResult"/>
 /// responses from payloads and failures, honoring the configured
-/// <see cref="ResultPatternOptions"/> supplied through constructor injection.
+/// <see cref="OutcomeOptions"/> supplied through constructor injection.
 /// </summary>
 public sealed class HttpResultFactory : IHttpResultFactory
 {
-    private readonly ResultPatternOptions _options;
+    private readonly OutcomeOptions _options;
 
-    public HttpResultFactory(ResultPatternOptions options)
+    /// <summary>
+    /// Creates a factory bound to <paramref name="options"/>. One instance per host;
+    /// each host can configure the library independently.
+    /// </summary>
+    public HttpResultFactory(OutcomeOptions options)
     {
         _options = options;
     }
 
+    /// <inheritdoc />
     public IResult Ok<T>(T? data = default) =>
         SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 
+    /// <inheritdoc />
     public IResult Ok<T>(T data, Pagination.PageInfo pageInfo) =>
         SuccessEnvelopeResultFor(data, pageInfo, StatusCodes.Status200OK);
 
@@ -32,27 +38,34 @@ public sealed class HttpResultFactory : IHttpResultFactory
     public IResult Created<T>(T data, Func<T, object> idSelector) =>
         new CreatedResult<T>(data, idSelector, _options);
 
+    /// <inheritdoc />
     public IResult NoContent() =>
         Results.NoContent();
 
+    /// <inheritdoc />
     public IResult BadRequest(string? message = null, string? code = null, IReadOnlyDictionary<string, string[]>? errors = null) =>
         Envelope(new FailureDetails(StatusCodes.Status400BadRequest, message, code, errors));
 
+    /// <inheritdoc />
     public IResult Unauthorized(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status401Unauthorized, message, code));
 
+    /// <inheritdoc />
     public IResult Forbidden(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status403Forbidden, message, code));
 
+    /// <inheritdoc />
     public IResult NotFound(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status404NotFound, message, code));
 
+    /// <inheritdoc />
     public IResult Conflict(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status409Conflict, message, code));
 
+    /// <inheritdoc />
     public IResult FromFailure(Failure failure)
     {
-        // 1. An explicit mapping registered via options.Failures.Map<TFailure> wins over a
+        // 1. An explicit mapping via options.Error.MapFailure<TFailure> wins over a
         //    failure's own mapping, so callers can override built-in failures too.
         if (_options.TryGetFailureMapper(failure.GetType(), out var custom))
         {
@@ -72,7 +85,7 @@ public sealed class HttpResultFactory : IHttpResultFactory
 
     /// <summary>
     /// Builds the error envelope from a failure's HTTP intent, through the configured
-    /// <see cref="ErrorEnvelopeOptions"/> (typed envelope) or the default RFC 7807
+    /// <see cref="ErrorOptions"/> (typed envelope) or the default RFC 7807
     /// <see cref="DefaultProblemDetails"/>.
     /// </summary>
     private IResult Envelope(FailureDetails details) =>

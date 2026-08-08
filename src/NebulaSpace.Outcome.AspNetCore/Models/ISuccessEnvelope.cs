@@ -1,28 +1,78 @@
 using Microsoft.AspNetCore.Http;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Models;
 
 /// <summary>
-/// Contract for a typed success envelope. Implement it on the type the app wants
-/// serialized for successful responses; the <c>From</c> factory builds the per-request
-/// body from the payload, optional pagination, the current request, and the HTTP status
-/// the response will use (<c>200</c> for <c>Ok</c>, <c>201</c> for <c>Created</c>).
+/// Contract for a typed success envelope. Implement it on a non‑generic type the app
+/// wants serialized for every successful response; the <c>From</c> factory builds the
+/// per‑request body from the response intent (<see cref="SuccessDetails"/>) and the
+/// current request.
+///
 /// <para>
-/// Register an open generic implementation with
-/// <c>options.SuccessEnvelope.Set(typeof(MySuccess&lt;&gt;))</c> — the library closes the
-/// type parameter with the payload's type per request and invokes <c>From</c>. Because the
-/// type parameter is also the payload type, <c>.Produces&lt;MySuccess&lt;T&gt;&gt;()</c>
-/// documents the exact success shape, with the payload substituted for <c>T</c>.
+/// Register with <c>options.Success.SetResponse&lt;MySuccess&gt;()</c> — the library
+/// dispatches through the static abstract <c>From</c>, so it is <b>AOT‑safe, zero‑reflection</b>,
+/// and compile‑time safe. Because the serialized body <em>is</em> that type,
+/// <c>.Produces&lt;MySuccess&gt;()</c> documents the exact success shape.
+/// </para>
+///
+/// <para>
+/// Define one envelope and register it once. Every <c>http.Ok(data)</c>,
+/// <c>http.Created(data, idSelector)</c>, and <c>outcome.ToHttpResult(...)</c> that
+/// resolves to a success renders through it.
+/// </para>
+/// </summary>
+/// <example>
+/// <code>
+/// public sealed class SuccessResponse : ISuccessEnvelope
+/// {
+///     public int StatusCode { get; init; }
+///     public object? Data { get; init; }
+///     public PageInfo? Pagination { get; init; }
+///     public string? TraceId { get; init; }
+///
+///     public static ISuccessEnvelope From(SuccessDetails details, HttpContext http) =>
+///         new SuccessResponse
+///         {
+///             StatusCode = details.StatusCode,
+///             Data = details.Data,
+///             Pagination = details.Pagination,
+///             TraceId = http.TraceIdentifier,
+///         };
+/// }
+/// </code>
+/// </example>
+public interface ISuccessEnvelope
+{
+    /// <summary>
+    /// Builds the envelope instance for one response.
+    /// </summary>
+    /// <param name="details">The response's intent: payload, pagination, and status code.</param>
+    /// <param name="httpContext">The current HTTP request.</param>
+    static abstract ISuccessEnvelope From(SuccessDetails details, HttpContext httpContext);
+}
+
+/// <summary>
+/// Typed contract for a success envelope that knows the payload type at compile time.
+/// Implement it on an <b>open generic</b> type when you need Swagger to document
+/// <c>Data: Order</c> rather than <c>Data: object</c> per endpoint.
+///
+/// <para>
+/// Register with <c>options.Success.SetResponse(typeof(ApiSuccess&lt;&gt;))</c> — the
+/// library closes <c>T</c> with the payload's runtime type per request.
+/// <b>This path uses <c>MakeGenericType</c> and is NOT AOT‑safe.</b> For NativeAOT,
+/// use the non‑generic <see cref="ISuccessEnvelope"/> plus
+/// <c>options.Success.SetResponse&lt;MySuccess&gt;()</c>.
 /// </para>
 /// </summary>
 /// <typeparam name="T">The payload type (the <c>data</c> the envelope wraps).</typeparam>
 public interface ISuccessEnvelope<T>
 {
-    /// <summary>Builds the envelope instance for one response.</summary>
+    /// <summary>
+    /// Builds the envelope instance for one response.
+    /// </summary>
     /// <param name="data">The payload — already the closed <typeparamref name="T"/> at call time.</param>
     /// <param name="pagination">Pagination metadata when the response is paginated, else <c>null</c>.</param>
-    /// <param name="httpContext">The current request.</param>
-    /// <param name="statusCode">The HTTP status the response will use.</param>
-    static abstract ISuccessEnvelope<T> From(T data, PageInfo? pagination, HttpContext httpContext, int statusCode);
+    /// <param name="httpContext">The current HTTP request.</param>
+    /// <param name="statusCode">The HTTP status the response will use (<c>200</c> for <c>Ok</c>, <c>201</c> for <c>Created</c>).</param>
+    static abstract ISuccessEnvelope<T> From(T data, Pagination.PageInfo? pagination, HttpContext httpContext, int statusCode);
 }

@@ -6,7 +6,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Failures;
 /// The sample app's user-custom error body. The serialized body IS this type, so
 /// <c>.Produces&lt;ErrorResponse&gt;()</c> documents the exact error shape. Implements
 /// <see cref="IErrorEnvelope"/> so the library can build it; registered once via
-/// <c>options.ErrorEnvelope.Set(typeof(ErrorResponse))</c>.
+/// <c>options.Error.SetResponse&lt;ErrorResponse&gt;()</c>.
 /// </summary>
 public sealed class ErrorResponse : IErrorEnvelope
 {

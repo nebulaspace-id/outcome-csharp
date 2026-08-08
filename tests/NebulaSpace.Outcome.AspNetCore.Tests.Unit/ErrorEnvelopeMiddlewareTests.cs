@@ -9,7 +9,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
 /// <summary>
 /// Verifies the typed error envelope: <see cref="ErrorEnvelopeResult"/> renders the
-/// user-defined envelope type via <c>options.ErrorEnvelope.Set(typeof(AppError))</c> (built from
+/// user-defined envelope type via <c>options.Error.SetResponse&lt;AppError&gt;()</c> (built from
 /// the failure's HTTP intent and the request), writes the status from
 /// <see cref="FailureDetails"/>, and falls back to the default RFC 7807
 /// <see cref="DefaultProblemDetails"/> when no envelope is configured.
@@ -19,7 +19,7 @@ public class ErrorEnvelopeResultTests
     [Fact]
     public async Task DefaultEnvelope_IsCleanProblemDetails_WhenNotConfigured()
     {
-        var options = new ResultPatternOptions();
+        var options = new OutcomeOptions();
         var result = new ErrorEnvelopeResult(
             new FailureDetails(StatusCodes.Status404NotFound, "nope", "not_found"), options);
 
@@ -38,8 +38,8 @@ public class ErrorEnvelopeResultTests
     [Fact]
     public async Task TypedEnvelope_IsSerializedAsUserType_WithPerRequestFields()
     {
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
 
         var result = new ErrorEnvelopeResult(
             new FailureDetails(StatusCodes.Status404NotFound, "nope", "not_found"), options);
@@ -58,8 +58,8 @@ public class ErrorEnvelopeResultTests
     public async Task TypedEnvelope_WritesStatusFromFailureDetails_NotFromEnvelope()
     {
         // The envelope is pure body — the HTTP status comes from FailureDetails.
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
 
         var result = new ErrorEnvelopeResult(
             new FailureDetails(StatusCodes.Status409Conflict, "conflict"), options);
@@ -71,8 +71,8 @@ public class ErrorEnvelopeResultTests
     [Fact]
     public async Task TypedEnvelope_PropertyCanComeFromHttpContext()
     {
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
 
         var result = new ErrorEnvelopeResult(
             new FailureDetails(StatusCodes.Status404NotFound, "nope"), options);
@@ -88,8 +88,8 @@ public class ErrorEnvelopeResultTests
     {
         // The symmetric API: pass the envelope TYPE, which implements IErrorEnvelope.
         // The library invokes its static From(FailureDetails, HttpContext).
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
 
         var result = new ErrorEnvelopeResult(
             new FailureDetails(StatusCodes.Status404NotFound, "nope", "not_found"), options);
@@ -106,17 +106,17 @@ public class ErrorEnvelopeResultTests
     [Fact]
     public void Set_EnvelopeNotImplementingInterface_ThrowsInvalidOperationException()
     {
-        var options = new ResultPatternOptions();
+        var options = new OutcomeOptions();
 
-        var ex = Assert.Throws<InvalidOperationException>(() => options.ErrorEnvelope.Set(typeof(object)));
+        var ex = Assert.Throws<InvalidOperationException>(() => options.Error.SetResponse(typeof(object)));
         Assert.Contains("IErrorEnvelope", ex.Message);
     }
 
     [Fact]
     public async Task TypedEnvelope_WithValidationErrors_SerializesFieldErrors()
     {
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
 
         var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
         var result = new ErrorEnvelopeResult(

@@ -26,7 +26,7 @@ public class HttpResultTests
     {
         var factory = ResultTestHelper.CreateFactory();
 
-        // SuccessEnvelope.Enabled defaults to true.
+        // Success.Enabled defaults to true.
         var capture = await Execute(factory, factory.Ok(new { greeting = "hi" }));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -38,7 +38,7 @@ public class HttpResultTests
     [Fact]
     public async Task Ok_WithEnvelopeDisabled_ReturnsRawData()
     {
-        var factory = ResultTestHelper.CreateFactory(options => options.SuccessEnvelope.Enabled = false);
+        var factory = ResultTestHelper.CreateFactory(options => options.Success.Enabled = false);
 
         var capture = await Execute(factory, factory.Ok(new { greeting = "hi" }));
 
@@ -92,7 +92,7 @@ public class HttpResultTests
     [Fact]
     public async Task Created_WithEnvelopeDisabled_ReturnsRawData()
     {
-        var factory = ResultTestHelper.CreateFactory(options => options.SuccessEnvelope.Enabled = false);
+        var factory = ResultTestHelper.CreateFactory(options => options.Success.Enabled = false);
         var order = new { Id = Guid.NewGuid() };
 
         var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders");
@@ -253,9 +253,9 @@ public class HttpResultTests
     [Fact]
     public async Task FromFailure_WithConfiguredTypedEnvelope_RendersIt()
     {
-        // The real AddOutcomeHttp flow: a typed envelope configured via ErrorEnvelope.Set(Type).
+        // The real AddOutcome flow: a typed envelope configured via Error.SetResponse(Type).
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.ErrorEnvelope.Set(typeof(AppError)));
+            options.Error.SetResponse<AppError>());
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")), path: "/orders/42");
 
@@ -281,7 +281,7 @@ public class HttpResultTests
     {
         // The default body is clean; a typed envelope decides to add code / field errors.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.ErrorEnvelope.Set(typeof(AppError)));
+            options.Error.SetResponse<AppError>());
 
         var errors = new Dictionary<string, string[]> { ["Amount"] = ["too small"] };
         var capture = await Execute(factory, factory.FromFailure(new ValidationFailure("Invalid", errors)));
@@ -336,7 +336,7 @@ public class HttpResultTests
     public async Task FromFailure_CustomMappedFailure_UsesCustomResult()
     {
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Failures.Map<QuotaStub>(f =>
+            options.Error.MapFailure<QuotaStub>(f =>
                 new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new QuotaStub("over limit")));
@@ -350,9 +350,9 @@ public class HttpResultTests
     [Fact]
     public async Task FromFailure_UsingFailuresSectionMap_Works()
     {
-        // Section-based API: options.Failures.Map<T>(...).
+        // Section-based API: options.Error.MapFailure<T>(...).
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Failures.Map<QuotaStub>(f =>
+            options.Error.MapFailure<QuotaStub>(f =>
                 new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new QuotaStub("over limit")));
@@ -367,7 +367,7 @@ public class HttpResultTests
     {
         // NotFoundFailure implements IHttpFailure; an explicit Failures.Map must win.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Failures.Map<NotFoundFailure>(f =>
+            options.Error.MapFailure<NotFoundFailure>(f =>
                 new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")));
@@ -380,7 +380,7 @@ public class HttpResultTests
     {
         // DerivedQuota inherits QuotaStub; the mapper registered for QuotaStub must apply.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Failures.Map<QuotaStub>(f =>
+            options.Error.MapFailure<QuotaStub>(f =>
                 new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code)));
 
         var capture = await Execute(factory, factory.FromFailure(new DerivedQuota("over limit")));
@@ -393,10 +393,10 @@ public class HttpResultTests
     [Fact]
     public async Task FromFailure_WithCustomTypedEnvelope_RendersIt()
     {
-        // ErrorEnvelope.Set(Type) changes the shape of every error response — here a typed
+        // Error.SetResponse<T> changes the shape of every error response — here a typed
         // body with an errorCode — while the status still comes from the failure.
-        var options = new ResultPatternOptions();
-        options.ErrorEnvelope.Set(typeof(AppError));
+        var options = new OutcomeOptions();
+        options.Error.SetResponse<AppError>();
         var factory = new HttpResultFactory(options);
 
         var capture = await Execute(factory, factory.FromFailure(new NotFoundFailure("Missing")));
@@ -409,12 +409,12 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task AddOutcomeHttp_ProducesCleanProblemDetails_ByDefault()
+    public async Task AddOutcome_ProducesCleanProblemDetails_ByDefault()
     {
-        // AddOutcomeHttp alone yields RFC 7807 ProblemDetails with a clean body —
+        // AddOutcome alone yields RFC 7807 ProblemDetails with a clean body —
         // no traceId/path unless a typed envelope is configured.
         var services = new ServiceCollection();
-        services.AddOutcomeHttp();
+        services.AddOutcome();
 
         await using var provider = services.BuildServiceProvider();
         var factory = provider.GetRequiredService<IHttpResultFactory>();
@@ -429,13 +429,13 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task AddOutcomeHttp_WithConfiguredTypedEnvelope_RendersIt()
+    public async Task AddOutcome_WithConfiguredTypedEnvelope_RendersIt()
     {
-        // Everything is configured at AddOutcomeHttp — no Replace needed to change the
+        // Everything is configured at AddOutcome — no Replace needed to change the
         // error shape.
         var services = new ServiceCollection();
-        services.AddOutcomeHttp(options =>
-            options.ErrorEnvelope.Set(typeof(AppError)));
+        services.AddOutcome(options =>
+            options.Error.SetResponse<AppError>());
 
         await using var provider = services.BuildServiceProvider();
         var factory = provider.GetRequiredService<IHttpResultFactory>();

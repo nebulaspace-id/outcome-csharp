@@ -10,7 +10,7 @@ public static class ExceptionDemoEndpoints
             .MapGet("/{keyword}", (string keyword, IExceptionDemoService service, IHttpResultFactory http) =>
             {
                 // 'reserved' → throws DomainException inside the service; the middleware
-                // maps it to 422 Unprocessable Entity via options.Exceptions.Map.
+                // maps it to 422 Unprocessable Entity via options.Error.MapException.
                 return http.Ok(new { message = service.Reserve(keyword) });
             });
 

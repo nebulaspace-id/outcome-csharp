@@ -6,7 +6,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Exceptions;
 /// Service that demonstrates exception mapping: it THROWS <see cref="DomainException"/>
 /// for a known business rule violation. Unlike expected failures (which return an
 /// <c>Outcome</c>), this is a real exception that escapes the service and is caught by
-/// the exception-handling middleware, which maps it via <c>options.Exceptions.Map</c>.
+/// the exception-handling middleware, which maps it via <c>options.Error.MapException</c>.
 /// </summary>
 public sealed class ExceptionDemoService : IExceptionDemoService
 {
