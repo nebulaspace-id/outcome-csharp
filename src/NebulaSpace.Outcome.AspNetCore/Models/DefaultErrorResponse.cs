@@ -20,7 +20,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 /// not from this type — so the body here is pure representation.
 /// </para>
 /// </summary>
-public sealed class DefaultProblemDetails : IErrorEnvelope
+public sealed class DefaultErrorResponse : IErrorEnvelope
 {
     /// <summary>Short, human‑readable summary of the problem (e.g. <c>"Not Found"</c>).</summary>
     public string Title { get; set; } = string.Empty;
@@ -32,7 +32,7 @@ public sealed class DefaultProblemDetails : IErrorEnvelope
     public string Detail { get; set; } = string.Empty;
 
     /// <summary>Builds the clean RFC 7807 body from a failure's HTTP intent.</summary>
-    public static IErrorEnvelope From(FailureDetails details, HttpContext httpContext) => new DefaultProblemDetails
+    public static IErrorEnvelope From(FailureDetails details, HttpContext httpContext) => new DefaultErrorResponse
     {
         Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
         Status = details.StatusCode,

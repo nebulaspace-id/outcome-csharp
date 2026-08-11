@@ -1,0 +1,66 @@
+using NebulaSpace.Outcome.AspNetCore.Pagination;
+
+namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
+
+public class CursorQueryTests
+{
+    [Fact]
+    public void Defaults_CursorNull_LimitTen()
+    {
+        var query = new CursorQuery();
+
+        Assert.Null(query.Cursor);
+        Assert.Equal(10, query.Limit);
+        Assert.Equal(CursorQuery.DefaultMaxLimit, query.MaxLimit);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(50, 50)]
+    [InlineData(0, 1)]    // clamped up to min
+    [InlineData(-1, 1)]   // clamped up to min
+    [InlineData(51, 50)]  // clamped down to max
+    [InlineData(500, 50)] // clamped down to max
+    public void Limit_ClampsToBounds(int value, int expected)
+    {
+        var query = new CursorQuery { Limit = value };
+
+        Assert.Equal(expected, query.Limit);
+    }
+
+    [Fact]
+    public void InitProp_WithCustomMaxLimit_IsUsedForClamping()
+    {
+        var query = new CursorQuery { MaxLimit = 20 };
+        query.Limit = 99;
+
+        Assert.Equal(20, query.MaxLimit);
+        Assert.Equal(20, query.Limit);
+    }
+
+    [Fact]
+    public void StaticDefault_CanBeChangedForCustomCaps()
+    {
+        CursorQuery.DefaultMaxLimit = 100;
+
+        try
+        {
+            var query = new CursorQuery { Limit = 999 };
+
+            Assert.Equal(100, query.MaxLimit);
+            Assert.Equal(100, query.Limit);
+        }
+        finally
+        {
+            CursorQuery.DefaultMaxLimit = 50;
+        }
+    }
+
+    [Fact]
+    public void Cursor_CanBeSetAndRead()
+    {
+        var query = new CursorQuery { Cursor = "eyJsYXN0SWQiOiJhYmMtMjAifQ" };
+
+        Assert.Equal("eyJsYXN0SWQiOiJhYmMtMjAifQ", query.Cursor);
+    }
+}

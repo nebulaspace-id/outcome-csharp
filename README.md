@@ -396,7 +396,7 @@ public sealed class SuccessResponse : ISuccessEnvelope
 {
     public int StatusCode { get; init; }
     public object? Data { get; init; }
-    public PageInfo? Pagination { get; init; }
+    public IPageMetadata? Pagination { get; init; }
     public string? TraceId { get; init; }
 
     public static ISuccessEnvelope From(SuccessDetails details, HttpContext http) => new SuccessResponse
@@ -439,10 +439,10 @@ public sealed class SuccessResponse<T> : ISuccessEnvelope<T>
 {
     public int StatusCode { get; init; }
     public T? Data { get; init; }
-    public PageInfo? Pagination { get; init; }
+    public IPageMetadata? Pagination { get; init; }
 
     public static ISuccessEnvelope<T> From(
-        T data, PageInfo? pagination, HttpContext http, int statusCode)
+        T data, IPageMetadata? pagination, HttpContext http, int statusCode)
         => new SuccessResponse<T>
         {
             StatusCode = statusCode,
@@ -652,26 +652,50 @@ consistent error envelope.
 
 ## Pagination
 
+Both **offset** and **cursor** pagination are supported through a shared
+`IPageMetadata` interface — the pipeline works with either strategy via one type. The
+`Type` discriminator (`"offset"` / `"cursor"`) lets clients decide how to render
+pagination without sniffing which fields are non‑null.
+
+### Configuring caps
+
+`PaginationOptions` — set at startup — defines the maximum page and limit a client can
+request. These are copied to static defaults on `PageQuery` and `CursorQuery` so
+`[AsParameters]` binding picks them up:
+
+```csharp
+builder.Services.AddOutcome(options =>
+{
+    options.Pagination.MaxPage = 25;    // max page number for offset
+    options.Pagination.MaxLimit = 50;   // max items per page for both strategies
+});
+```
+
+`MaxPage` and `MaxLimit` on the query types carry `[BindNever]` — clients can **never**
+inject their own caps through the query string.
+
+### Offset pagination
+
 Three types work together:
 
 | Type | Role |
 | --- | --- |
-| `PageQuery` | Incoming `page` / `pageSize` parameters, bound from the query string |
-| `PagedResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
-| `PageInfo` | Response metadata: `Page`, `PageSize`, `TotalPages`, `TotalItems` |
+| `PageQuery` | Incoming `page` / `limit` parameters, bound from the query string |
+| `PageResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
+| `PageInfo` | Response metadata: `type: "offset"`, `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
 
-**Service** returns a `PagedResult<T>` — the page/size live on the incoming `PageQuery`, so
+**Service** returns a `PageResult<T>` — the page/limit live on the incoming `PageQuery`, so
 the service only reports the raw `TotalCount`:
 
 ```csharp
-public PagedResult<Order> GetOrders(PageQuery pageQuery)
+public PageResult<Order> GetOrders(PageQuery pageQuery)
 {
     var items = _orders
-        .Skip(pageQuery.Offset)          // (Page - 1) * PageSize
-        .Take(pageQuery.PageSize)
+        .Skip(pageQuery.Offset)          // (Page - 1) * Limit
+        .Take(pageQuery.Limit)
         .ToArray();
 
-    return new PagedResult<Order> { Items = items, TotalCount = _orders.Count };
+    return new PageResult<Order> { Items = items, TotalCount = _orders.Count };
 }
 ```
 
@@ -683,15 +707,84 @@ group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IH
         http.Ok(page.Items, PageInfo.Create(pageQuery, (int)page.TotalCount))));
 ```
 
-- `[AsParameters]` binds each property from the query string (`?page=2&pageSize=20`).
-- `PageQuery.Offset` gives you the 0‑based offset directly — no more `(Page - 1) * PageSize`.
-- `PageQuery` clamps `page` to `1..25` and `pageSize` to `1..50` by default, so a client
-  cannot ask for an unbounded page. Out‑of‑range values are clamped, never silently reset —
-  `?page=999` becomes page `25`.
+`?page=2&limit=20` → the JSON payload:
 
-> **Note:** `[AsParameters]` is a **framework feature** (Minimal API binding), available
-> since **.NET 7** — the same floor the AspNetCore package requires. If you ever need to
-> bind `PageQuery` manually instead, `[FromQuery] int page` works too.
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "type": "offset",
+    "page": 2,
+    "limit": 20,
+    "totalPages": 7,
+    "totalItems": 137,
+    "hasMore": true
+  }
+}
+```
+
+- `PageQuery.Offset` gives you the 0‑based offset — no more `(Page - 1) * Limit`.
+- Out‑of‑range values are clamped, never silently reset — `?page=999` becomes page `MaxPage`.
+- `[AsParameters]` is a **framework feature** (Minimal API binding), available since
+   **.NET 7**.
+
+### Cursor pagination
+
+| Type | Role |
+| --- | --- |
+| `CursorQuery` | Incoming `cursor` / `limit` parameters, bound from the query string |
+| `CursorResult<T>` | Outgoing page from the service: `Items`, `PreviousCursor`, `NextCursor`, `TotalCount` |
+| `CursorInfo` | Response metadata: `type: "cursor"`, `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
+
+**Service** returns a `CursorResult<T>` — cursors are opaque strings; encoding/decoding is
+the service's responsibility:
+
+```csharp
+public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
+{
+    var startIndex = Decode(cursorQuery.Cursor); // null → 0
+    var items = _orders.Skip(startIndex).Take(cursorQuery.Limit).ToArray();
+    var endIndex = startIndex + items.Length;
+
+    return new CursorResult<Order>
+    {
+        Items = items,
+        PreviousCursor = startIndex == 0 ? null : Encode(Math.Max(0, startIndex - cursorQuery.Limit)),
+        NextCursor = endIndex < _orders.Count ? Encode(endIndex) : null,
+        TotalCount = _orders.Count,
+    };
+}
+```
+
+**Endpoint** binds `CursorQuery` with `[AsParameters]`:
+
+```csharp
+group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+        http.Ok(page.Items, CursorInfo.Create(cursorQuery, page))));
+```
+
+`?limit=20` (first page) → the JSON payload:
+
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "type": "cursor",
+    "nextCursor": "eyJsYXN0SWQiOjIwfQ",
+    "hasMore": true,
+    "totalItems": 137
+  }
+}
+```
+
+- `previousCursor` is `null` on the first page (omitted from JSON).
+- `nextCursor` is `null` on the last page (omitted from JSON), `hasMore` is `false`.
+- `totalItems` may be `null` when the service doesn't compute the total count.
+- `CursorQuery.Limit` is clamped to `1..MaxLimit` — same cap as offset, configurable via
+  `PaginationOptions.MaxLimit`.
 
 ---
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
@@ -28,10 +29,18 @@ public sealed class HttpResultFactory : IHttpResultFactory
         SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 
     /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.PageInfo pageInfo) =>
-        SuccessEnvelopeResultFor(data, pageInfo, StatusCodes.Status200OK);
+    public IResult Ok<T>(T data, Pagination.OffsetInfo offsetInfo) =>
+        SuccessEnvelopeResultFor(data, offsetInfo, StatusCodes.Status200OK);
 
-    private IResult SuccessEnvelopeResultFor<T>(T? data, Pagination.PageInfo? pagination, int statusCode) =>
+    /// <inheritdoc />
+    public IResult Ok<T>(T data, Pagination.CursorInfo cursorInfo) =>
+        SuccessEnvelopeResultFor(data, cursorInfo, StatusCodes.Status200OK);
+
+    /// <inheritdoc />
+    public IResult Ok<T>(T data, Pagination.IPaginationDetails pagination) =>
+        SuccessEnvelopeResultFor(data, pagination, StatusCodes.Status200OK);
+
+    private IResult SuccessEnvelopeResultFor<T>(T? data, IPaginationDetails? pagination, int statusCode) =>
         new SuccessEnvelopeResult<T>(data, pagination, statusCode, _options);
 
     /// <inheritdoc />
@@ -86,7 +95,7 @@ public sealed class HttpResultFactory : IHttpResultFactory
     /// <summary>
     /// Builds the error envelope from a failure's HTTP intent, through the configured
     /// <see cref="ErrorOptions"/> (typed envelope) or the default RFC 7807
-    /// <see cref="DefaultProblemDetails"/>.
+    /// <see cref="DefaultErrorResponse"/>.
     /// </summary>
     private IResult Envelope(FailureDetails details) =>
         new ErrorEnvelopeResult(details, _options);

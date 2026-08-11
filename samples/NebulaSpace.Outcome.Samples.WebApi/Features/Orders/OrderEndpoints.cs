@@ -12,14 +12,34 @@ public static class OrderEndpoints
 
         group.MapPost("/", (CreateOrderRequest request, IOrderService orderService, IHttpResultFactory http) =>
             orderService.CreateOrder(request).ToHttpResultAsync(http, order => http.Created(order, o => o.Id)))
-            .Produces<SuccessResponse>(StatusCodes.Status201Created)
+            .Produces<SuccessResponse<Order>>(StatusCodes.Status201Created)
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status422UnprocessableEntity);
 
-        group.MapGet("/", (IOrderService orderService, [AsParameters] PageQuery pageQuery, IHttpResultFactory http) =>
-            Outcome.Success(orderService.GetOrders(pageQuery)).ToHttpResult(http, page =>
-                http.Ok(page.Items, PageInfo.Create(pageQuery, (int)page.TotalCount))))
-            .Produces<SuccessResponse>()
+        group.MapGet("/", (IOrderService orderService, [AsParameters] OffsetQuery offsetQuery, IHttpResultFactory http) =>
+            Outcome.Success(orderService.GetOrders(offsetQuery)).ToHttpResult(http, page =>
+                http.Ok(page.Items, page.ToOffsetInfo(offsetQuery))))
+            .Produces<SuccessResponse<Order[], OffsetInfo>>()
+            .Produces<ErrorResponse>(StatusCodes.Status400BadRequest);
+
+        group.MapGet("/cursor", (IOrderService orderService, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
+            Outcome.Success(orderService.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+                http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
+            .Produces<SuccessResponse<Order[], CursorInfo>>()
+            .Produces<ErrorResponse>(StatusCodes.Status400BadRequest);
+
+        // ── Custom pagination shapes (IPaginationDetails extensibility demo) ──
+
+        group.MapGet("/offset-custom", (IOrderService orderService, [AsParameters] OffsetQuery offsetQuery, IHttpResultFactory http) =>
+            Outcome.Success(orderService.GetOrders(offsetQuery)).ToHttpResult(http, page =>
+                http.Ok(page.Items, OffsetPage.Create(offsetQuery, (int)page.TotalCount))))
+            .Produces<SuccessResponse<Order[], OffsetPage>>()
+            .Produces<ErrorResponse>(StatusCodes.Status400BadRequest);
+
+        group.MapGet("/cursor-custom", (IOrderService orderService, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
+            Outcome.Success(orderService.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+                http.Ok(page.Items, CursorPage.Create(cursorQuery, page))))
+            .Produces<SuccessResponse<Order[], CursorPage>>()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest);
 
         return app;

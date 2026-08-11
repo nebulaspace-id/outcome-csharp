@@ -12,7 +12,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 /// user-defined envelope type via <c>options.Error.SetResponse&lt;AppError&gt;()</c> (built from
 /// the failure's HTTP intent and the request), writes the status from
 /// <see cref="FailureDetails"/>, and falls back to the default RFC 7807
-/// <see cref="DefaultProblemDetails"/> when no envelope is configured.
+/// <see cref="DefaultErrorResponse"/> when no envelope is configured.
 /// </summary>
 public class ErrorEnvelopeResultTests
 {

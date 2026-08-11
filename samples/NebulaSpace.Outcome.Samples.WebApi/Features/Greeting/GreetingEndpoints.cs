@@ -10,7 +10,7 @@ public static class GreetingEndpoints
         app.MapGroup("/greet")
             .MapGet("/{name}", (string name, IGreetingService greetingService, IHttpResultFactory http) =>
                 greetingService.Greet(name).ToHttpResult(http, greeting => http.Ok(new { greeting = greeting ?? "" })))
-            .Produces<SuccessResponse>()
+            .Produces<SuccessResponse<GreetingResponse>>()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status429TooManyRequests)
             .RequireRateLimiting("fixed");

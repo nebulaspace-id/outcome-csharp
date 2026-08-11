@@ -47,7 +47,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Result Samples API",
         Version = "v1",
-Description = "Example API using the Result pattern.",
+        Description = "Example API using the Result pattern.",
     });
 });
 
@@ -89,29 +89,20 @@ builder.Services.AddRateLimiter(options =>
 // mappers, and exception-handling middleware, all in one call.
 builder.Services.AddOutcome(options =>
 {
-    // ──────────────────────────────────────────────────────────────────
-    // AOT‑safe, zero‑reflection non‑generic envelope (commented out).
-    // Implements ISuccessEnvelope with From(SuccessDetails, HttpContext)
-    // — the library dispatches through static abstract directly.
-    // WARNING: Swagger sees Data as object, not the actual payload type.
-    // Uncomment for NativeAOT; keep the open‑generic below for JIT.
-    //
-    //   options.Success.SetResponse<SuccessResponse>();
-    //   .Produces<SuccessResponse>()
-    //
-    //   // SuccessResponse is already defined in Failures/:
-    //   // public sealed class SuccessResponse : ISuccessEnvelope
-    //   // {
-    //   //     public static ISuccessEnvelope From(SuccessDetails details, HttpContext http) => ...
-    //   // }
-    // ──────────────────────────────────────────────────────────────────
-
-    // Open‑generic success envelope — closes T per request via
-    // MakeGenericType + cached MethodInfo.Invoke, so Swagger documents
-    // Data: Order / Data: GreetingResponse / etc. per endpoint.
-    // NOT AOT‑safe — switch to the commented non‑generic overload above
-    // when publishing NativeAOT.
+    // 1‑param open‑generic — non-paginated responses.
+    // Closes T per request so Swagger documents Data: Order / GreetingResponse / etc.
+    // Uses MakeGenericType + cached MethodInfo.Invoke.
     options.Success.SetResponse(typeof(SuccessResponse<>));
+
+    // 2‑param open‑generic — paginated responses.
+    // TPage is the concrete pagination type (OffsetInfo or CursorInfo) so STJ
+    // and Swagger serialize the full pagination shape, not just IPaginationDetails.
+    options.Success.SetResponse(typeof(SuccessResponse<,>));
+
+    // Pagination caps — applied at startup to the static defaults on
+    // OffsetQuery and CursorQuery so [AsParameters] binding picks them up.
+    options.Pagination.MaxPage = 25;
+    options.Pagination.MaxLimit = 50;
 
     // The error envelope is any type the app defines — serialized as-is, so
     // .Produces<ErrorResponse>() documents the exact body. The generic Set<T> is

@@ -5,5 +5,6 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Orders;
 public interface IOrderService
 {
     Task<Outcome<Order>> CreateOrder(CreateOrderRequest request);
-    PagedResult<Order> GetOrders(PageQuery pageQuery);
+    OffsetResult<Order> GetOrders(OffsetQuery offsetQuery);
+    CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery);
 }

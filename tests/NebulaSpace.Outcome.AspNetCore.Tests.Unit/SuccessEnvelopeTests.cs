@@ -77,17 +77,51 @@ public class SuccessEnvelopeTests
     [Fact]
     public async Task Ok_WithTypedEnvelope_AndPagination_ForwardsPagination()
     {
+        // 2‑param envelope so STJ serializes the full OffsetInfo shape.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(AppSuccess<>)));
+            options.Success.SetResponse(typeof(AppSuccess<,>)));
 
-        var pagination = PageInfo.Create(page: 2, pageSize: 10, totalItems: 37);
+        var pagination = OffsetInfo.Create(page: 2, limit: 10, totalItems: 37);
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         var root = doc.RootElement;
-        Assert.Equal(2, root.GetProperty("pagination").GetProperty("page").GetInt32());
-        Assert.Equal(10, root.GetProperty("pagination").GetProperty("pageSize").GetInt32());
+        var page = root.GetProperty("pagination");
+        Assert.Equal(2, page.GetProperty("page").GetInt32());
+        Assert.Equal(10, page.GetProperty("limit").GetInt32());
+        Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
+        Assert.Equal(37, page.GetProperty("totalItems").GetInt32());
+        Assert.Equal("offset", page.GetProperty("type").GetString());
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Ok_WithTypedEnvelope_AndCursorPagination_ForwardsFullCursorInfo()
+    {
+        // 2‑param envelope — TPage is CursorInfo, full shape serialized.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(AppSuccess<,>)));
+
+        var cursorInfo = new CursorInfo
+        {
+            PreviousCursor = "prev-abc",
+            NextCursor = "next-def",
+            HasMore = true,
+            TotalItems = 100,
+        };
+
+        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, cursorInfo));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        using var doc = JsonDocument.Parse(capture.Body);
+        var root = doc.RootElement;
+        var page = root.GetProperty("pagination");
+        Assert.Equal("cursor", page.GetProperty("type").GetString());
+        Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
+        Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(100, page.GetProperty("totalItems").GetInt32());
     }
 
     [Fact]
@@ -155,7 +189,6 @@ public class SuccessEnvelopeTests
                     TraceId = http.TraceIdentifier,
                     StatusCode = statusCode,
                     Data = data,
-                    Pagination = pagination,
                 }));
 
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new { greeting = "aot" }));
@@ -166,21 +199,38 @@ public class SuccessEnvelopeTests
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
     }
 
-    /// <summary>A user-defined typed success envelope — serializes fully, built via ISuccessEnvelope.From.</summary>
+    /// <summary>A user-defined 1‑param typed success envelope for non‑paginated responses.</summary>
     private sealed class AppSuccess<T> : ISuccessEnvelope<T>
     {
         public string? TraceId { get; set; }
         public int StatusCode { get; set; }
         public T? Data { get; set; }
-        public PageInfo? Pagination { get; set; }
 
-        public static ISuccessEnvelope<T> From(T data, PageInfo? pagination, HttpContext httpContext, int statusCode) =>
+        public static ISuccessEnvelope<T> From(T data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode) =>
             new AppSuccess<T>
             {
                 TraceId = httpContext.TraceIdentifier,
                 StatusCode = statusCode,
                 Data = data,
-                Pagination = pagination,
+            };
+    }
+
+    /// <summary>A 2‑param typed success envelope — TPage is the concrete pagination type,
+    /// so STJ and Swagger serialize full OffsetInfo / CursorInfo shape.</summary>
+    private sealed class AppSuccess<TData, TPage> : ISuccessEnvelope<TData>
+    {
+        public string? TraceId { get; set; }
+        public int StatusCode { get; set; }
+        public TData? Data { get; set; }
+        public TPage? Pagination { get; set; }
+
+        public static ISuccessEnvelope<TData> From(TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode) =>
+            new AppSuccess<TData, TPage>
+            {
+                TraceId = httpContext.TraceIdentifier,
+                StatusCode = statusCode,
+                Data = data,
+                Pagination = pagination is TPage typed ? typed : default,
             };
     }
 

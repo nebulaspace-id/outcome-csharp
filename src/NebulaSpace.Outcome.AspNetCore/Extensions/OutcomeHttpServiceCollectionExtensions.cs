@@ -3,6 +3,7 @@ using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Extensions;
 
@@ -15,7 +16,7 @@ public static class OutcomeHttpServiceCollectionExtensions
     /// <see cref="IHttpResultFactory"/>, so multiple applications in one process can
     /// configure the library independently.
     ///
-    /// The default error shape is clean RFC 7807 <see cref="DefaultProblemDetails"/>:
+    /// The default error shape is clean RFC 7807 <see cref="DefaultErrorResponse"/>:
     /// only <c>title</c>/<c>status</c>/<c>detail</c>. Use
     /// <c>options.Error.SetResponse&lt;MyError&gt;()</c> — any type implementing
     /// <see cref="IErrorEnvelope"/> — to make the error body your own; it is serialized
@@ -41,6 +42,12 @@ public static class OutcomeHttpServiceCollectionExtensions
     {
         var options = new OutcomeOptions();
         configure?.Invoke(options);
+
+        // Copy PaginationOptions to the static defaults so [AsParameters]-bound query
+        // types pick up the app's configured caps (they are parameterless for binding).
+        OffsetQuery.DefaultMaxPage = Math.Max(1, options.Pagination.MaxPage);
+        OffsetQuery.DefaultMaxLimit = Math.Max(1, options.Pagination.MaxLimit);
+        CursorQuery.DefaultMaxLimit = Math.Max(1, options.Pagination.MaxLimit);
 
         services.AddSingleton(options);
         services.AddSingleton<IHttpResultFactory, HttpResultFactory>();

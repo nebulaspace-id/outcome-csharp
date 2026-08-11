@@ -18,16 +18,45 @@ public sealed class OrderService : IOrderService
         _validator = validator;
     }
 
-    public PagedResult<Order> GetOrders(PageQuery pageQuery)
+    public OffsetResult<Order> GetOrders(OffsetQuery offsetQuery)
     {
         var items = _orders
-            .Skip(pageQuery.Offset)
-            .Take(pageQuery.PageSize)
+            .Skip(offsetQuery.Offset)
+            .Take(offsetQuery.Limit)
             .ToArray();
 
-        return new PagedResult<Order>
+        return new OffsetResult<Order>
         {
             Items = items,
+            TotalCount = _orders.Count,
+        };
+    }
+
+    public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
+    {
+        // Decode the cursor to find the starting index (0 for first page).
+        var startIndex = 0;
+        if (!string.IsNullOrEmpty(cursorQuery.Cursor))
+        {
+            // A real implementation would decode an opaque token (e.g. base64 JSON).
+            // This sample simply parses an integer for demonstration.
+            if (int.TryParse(cursorQuery.Cursor, out var decoded))
+                startIndex = decoded;
+        }
+
+        var items = _orders
+            .Skip(startIndex)
+            .Take(cursorQuery.Limit)
+            .ToArray();
+
+        var endIndex = startIndex + items.Length;
+        var hasMore = endIndex < _orders.Count;
+
+        return new CursorResult<Order>
+        {
+            Items = items,
+            PreviousCursor = startIndex == 0 ? null : Math.Max(0, startIndex - cursorQuery.Limit).ToString(),
+            NextCursor = hasMore ? endIndex.ToString() : null,
             TotalCount = _orders.Count,
         };
     }

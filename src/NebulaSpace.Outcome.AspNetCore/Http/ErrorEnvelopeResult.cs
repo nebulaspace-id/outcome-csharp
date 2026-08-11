@@ -10,7 +10,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// configured (<c>options.Error.SetResponse(typeof(MyError))</c>), the body is the
 /// user‑defined type, built from the failure's HTTP intent (<see cref="FailureDetails"/>)
 /// and the current <see cref="HttpContext"/>, and serialized as‑is — so OpenAPI documents
-/// the exact shape. Otherwise the default RFC 7807 <see cref="DefaultProblemDetails"/>
+/// the exact shape. Otherwise the default RFC 7807 <see cref="DefaultErrorResponse"/>
 /// is written. The HTTP status always comes from <see cref="FailureDetails.StatusCode"/>.
 /// </summary>
 public sealed class ErrorEnvelopeResult : IResult
@@ -37,7 +37,7 @@ public sealed class ErrorEnvelopeResult : IResult
     {
         object envelope = _options.ErrorFactory is { } factory
             ? factory(_details, httpContext)
-            : BuildDefaultProblemDetails(_details);
+            : BuildDefaultErrorResponse(_details);
 
         httpContext.Response.StatusCode = _details.StatusCode;
         // Cast to object so System.Text.Json serializes the runtime type's full shape.
@@ -45,7 +45,7 @@ public sealed class ErrorEnvelopeResult : IResult
     }
 
     /// <summary>Builds the default clean RFC 7807 problem response from a failure's intent.</summary>
-    private static DefaultProblemDetails BuildDefaultProblemDetails(FailureDetails details) => new()
+    private static DefaultErrorResponse BuildDefaultErrorResponse(FailureDetails details) => new()
     {
         Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
         Status = details.StatusCode,

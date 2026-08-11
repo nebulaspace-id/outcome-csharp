@@ -13,7 +13,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 /// <c>options.Error</c> from <see cref="OutcomeOptions"/>.
 ///
 /// <para>
-/// By default the error envelope is clean RFC 7807 <see cref="DefaultProblemDetails"/>
+/// By default the error envelope is clean RFC 7807 <see cref="DefaultErrorResponse"/>
 /// (title/status/detail only). Use <see cref="SetResponse{TEnvelope}"/> to make it your own.
 /// </para>
 ///
@@ -33,7 +33,7 @@ public sealed class ErrorOptions
     /// <summary>
     /// Builds a concrete envelope instance from the failure's HTTP intent and the current
     /// request. <c>null</c> until a <c>SetResponse</c> overload is called, after which
-    /// <see cref="ErrorEnvelopeResult"/> uses it instead of <see cref="DefaultProblemDetails"/>.
+    /// <see cref="ErrorEnvelopeResult"/> uses it instead of <see cref="DefaultErrorResponse"/>.
     /// </summary>
     internal Func<FailureDetails, HttpContext, object>? Factory { get; private set; }
 
@@ -42,6 +42,17 @@ public sealed class ErrorOptions
     /// <see cref="IErrorEnvelope"/>. Dispatches through the static abstract
     /// <c>From(FailureDetails, HttpContext)</c> directly — no <c>GetMethod</c>, no
     /// <c>Invoke</c>, no allocations beyond the envelope itself.
+    ///
+    /// <para>
+    /// <b>Why is this generic while Success uses <c>typeof()</c>?</b>
+    /// <see cref="IErrorEnvelope"/> is non‑generic — there is one envelope type for the
+    /// whole application — so <c>SetResponse&lt;T&gt;()</c> works at compile time.
+    /// <see cref="ISuccessEnvelope{T}"/> is generic (one envelope per payload type),
+    /// and C# cannot pass an <em>open</em> generic as a type argument —
+    /// <c>SetResponse&lt;SomeEnvelope&lt;&gt;&gt;()</c> does not compile — so Success
+    /// uses <c>SuccessOptions.SetResponse(Type)</c> with <c>typeof(Envelope&lt;&gt;)</c>
+    /// instead. This is a C# language constraint, not a design gap.
+    /// </para>
     /// </summary>
     /// <typeparam name="TEnvelope">A type implementing <see cref="IErrorEnvelope"/>.</typeparam>
     /// <example>

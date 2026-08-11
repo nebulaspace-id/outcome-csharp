@@ -25,10 +25,29 @@ public interface IHttpResultFactory
     /// <param name="data">The payload. Pass <c>default</c> for a <c>Unit</c> response.</param>
     IResult Ok<T>(T? data = default);
 
-    /// <summary>200 OK with a payload and pagination metadata.</summary>
+    /// <summary>200 OK with a payload and offset-pagination metadata.</summary>
     /// <param name="data">The payload.</param>
-    /// <param name="pageInfo">Pagination metadata built with <c>PageInfo.Create</c>.</param>
-    IResult Ok<T>(T data, Pagination.PageInfo pageInfo);
+    /// <param name="offsetInfo">Pagination metadata built with <c>OffsetInfo.Create</c>.</param>
+    IResult Ok<T>(T data, Pagination.OffsetInfo offsetInfo);
+
+    /// <summary>200 OK with a payload and cursor-pagination metadata.</summary>
+    /// <param name="data">The payload.</param>
+    /// <param name="cursorInfo">Pagination metadata built with <c>CursorInfo.Create</c>.</param>
+    IResult Ok<T>(T data, Pagination.CursorInfo cursorInfo);
+
+    /// <summary>
+    /// 200 OK with a payload and <em>any</em> pagination metadata implementing
+    /// <see cref="Pagination.IPaginationDetails"/>. Use this for custom pagination types
+    /// (keyset, time‑based, etc.) — the pipeline resolves the concrete type at runtime so
+    /// <c>System.Text.Json</c> and Swagger serialize the full shape.
+    /// </summary>
+    /// <param name="data">The payload.</param>
+    /// <param name="pagination">
+    /// Pagination metadata — <see cref="Pagination.OffsetInfo"/>,
+    /// <see cref="Pagination.CursorInfo"/>, or any custom type implementing
+    /// <see cref="Pagination.IPaginationDetails"/>.
+    /// </param>
+    IResult Ok<T>(T data, Pagination.IPaginationDetails pagination);
 
     /// <summary>
     /// 201 Created with a <c>Location</c> header derived from the current request path

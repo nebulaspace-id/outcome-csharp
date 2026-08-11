@@ -49,19 +49,111 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task Ok_WithPagination_IncludesPaginationInEnvelope()
+    public async Task Ok_WithPagination_IncludesFullConcretePaginationInEnvelope()
     {
-        var factory = ResultTestHelper.CreateFactory();
-        var pagination = Pagination.PageInfo.Create(1, 10, 37);
+        // 2‑param envelope so STJ serializes the full OffsetInfo shape,
+        // not just the IPaginationDetails interface members.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+
+        var pagination = Pagination.OffsetInfo.Create(1, 10, 37);
         var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         var page = json.GetProperty("pagination");
         Assert.Equal(1, page.GetProperty("page").GetInt32());
-        Assert.Equal(10, page.GetProperty("pageSize").GetInt32());
+        Assert.Equal(10, page.GetProperty("limit").GetInt32());
         Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
         Assert.Equal(37, page.GetProperty("totalItems").GetInt32());
+        Assert.Equal("offset", page.GetProperty("type").GetString());
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Ok_WithCursorPagination_IncludesFullCursorInfoInEnvelope()
+    {
+        // 2‑param envelope closes TPage with CursorInfo, so STJ sees
+        // NextCursor, PreviousCursor, HasMore, TotalItems — not just IPaginationDetails.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+
+        var cursorInfo = new Pagination.CursorInfo
+        {
+            PreviousCursor = "prev-abc",
+            NextCursor = "next-def",
+            HasMore = true,
+            TotalItems = 100,
+        };
+
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, cursorInfo));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        var page = json.GetProperty("pagination");
+        Assert.Equal("cursor", page.GetProperty("type").GetString());
+        Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
+        Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(100, page.GetProperty("totalItems").GetInt32());
+    }
+
+    [Fact]
+    public async Task Ok_WithCustomPaginationDetails_UsesConcreteType()
+    {
+        // Custom IPaginationDetails type — the factory resolves TPage at runtime
+        // via pagination?.GetType(), so STJ serializes the full shape.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+
+        var keyset = new CustomKeysetPage
+        {
+            NextKey = "abc-123",
+            PreviousKey = null,
+            HasMore = true,
+            TotalItems = 500,
+        };
+
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, keyset));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        var page = json.GetProperty("pagination");
+        Assert.Equal("keyset", page.GetProperty("type").GetString());
+        Assert.Equal("abc-123", page.GetProperty("nextKey").GetString());
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(500, page.GetProperty("totalItems").GetInt32());
+    }
+
+    [Fact]
+    public async Task Ok_WithPagination_NoTwoParamEnvelopeRegistered_FallsBackToDefault()
+    {
+        // No envelope registered at all — falls back to DefaultSuccessResponse.
+        // Pagination must still appear via the auto-fallback
+        // DefaultSuccessResponse<TData, TPage>, never silently dropped.
+        var factory = ResultTestHelper.CreateFactory(); // no SetResponse call
+
+        var pagination = Pagination.OffsetInfo.Create(2, 5, 42);
+        var capture = await Execute(factory, factory.Ok(new[] { "a", "b" }, pagination));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.True(json.TryGetProperty("pagination", out _), "pagination must not be dropped");
+        var page = json.GetProperty("pagination");
+        Assert.Equal("offset", page.GetProperty("type").GetString());
+        Assert.Equal(2, page.GetProperty("page").GetInt32());
+        Assert.Equal(5, page.GetProperty("limit").GetInt32());
+        Assert.Equal(9, page.GetProperty("totalPages").GetInt32());
+        Assert.Equal(42, page.GetProperty("totalItems").GetInt32());
+    }
+
+    private sealed class CustomKeysetPage : Pagination.IPaginationDetails
+    {
+        public string Type => "keyset";
+        public string? NextKey { get; set; }
+        public string? PreviousKey { get; set; }
+        public bool HasMore { get; set; }
+        public long? TotalItems { get; set; }
     }
 
     // --- Created ---
@@ -195,7 +287,7 @@ public class HttpResultTests
     [Fact]
     public async Task DefaultErrorBody_WritesEmptyDetail_WhenMessageIsNull()
     {
-        // factory.NotFound() has no message -> Detail is "" (DefaultProblemDetails is
+        // factory.NotFound() has no message -> Detail is "" (DefaultErrorResponse is
         // non-nullable, so detail always appears in the body).
         var factory = ResultTestHelper.CreateFactory();
 
