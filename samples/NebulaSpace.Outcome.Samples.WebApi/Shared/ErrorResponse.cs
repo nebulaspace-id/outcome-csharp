@@ -1,6 +1,6 @@
 using NebulaSpace.Outcome.AspNetCore.Models;
 
-namespace NebulaSpace.Outcome.Samples.WebApi.Failures;
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
 /// The sample app's user-custom error body. The serialized body IS this type, so

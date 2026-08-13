@@ -45,9 +45,9 @@ public static class OutcomeHttpServiceCollectionExtensions
 
         // Copy PaginationOptions to the static defaults so [AsParameters]-bound query
         // types pick up the app's configured caps (they are parameterless for binding).
-        OffsetQuery.DefaultMaxPage = Math.Max(1, options.Pagination.MaxPage);
-        OffsetQuery.DefaultMaxLimit = Math.Max(1, options.Pagination.MaxLimit);
-        CursorQuery.DefaultMaxLimit = Math.Max(1, options.Pagination.MaxLimit);
+        OffsetQuery.MaxPage = Math.Max(1, options.Pagination.MaxPage);
+        OffsetQuery.MaxLimit = Math.Max(1, options.Pagination.MaxLimit);
+        CursorQuery.MaxLimit = Math.Max(1, options.Pagination.MaxLimit);
 
         services.AddSingleton(options);
         services.AddSingleton<IHttpResultFactory, HttpResultFactory>();

@@ -1,12 +1,8 @@
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-
 namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 
 /// <summary>
 /// Incoming cursor-pagination parameters. Bound from the query string with
-/// <c>[AsParameters]</c> — the parameterless constructor applies the default limits, and
-/// <c>[BindNever]</c> on <see cref="MaxLimit"/> prevents clients from injecting their
-/// own cap.
+/// <c>[AsParameters]</c> — the parameterless constructor applies the default limits.
 ///
 /// <para>
 /// The static default is set from <see cref="Options.PaginationOptions"/> during
@@ -20,7 +16,12 @@ public sealed class CursorQuery
     /// Default maximum items per page, overridden at startup from
     /// <c>options.Pagination.MaxLimit</c>. Default 50.
     /// </summary>
-    public static int DefaultMaxLimit { get; set; } = 50;
+    /// <remarks>
+    /// A <b>field</b>, not a settable property: a <c>public static</c> property with a public
+    /// setter makes ASP.NET Core's <c>RequestDelegateFactory</c> try to bind it as a query
+    /// parameter and emit invalid IL (<see cref="System.InvalidProgramException"/>).
+    /// </remarks>
+    public static int MaxLimit = 50;
 
     private string? _cursor;
     private int _limit = 10;
@@ -48,12 +49,4 @@ public sealed class CursorQuery
         get => _limit;
         set => _limit = Math.Clamp(value, 1, MaxLimit);
     }
-
-    /// <summary>
-    /// Maximum items per page allowed by this query. Backed by
-    /// <see cref="DefaultMaxLimit"/> unless set explicitly via an init-only property.
-    /// <c>[BindNever]</c> — never accepted from the client.
-    /// </summary>
-    [BindNever]
-    public int MaxLimit { get; init; } = DefaultMaxLimit;
 }

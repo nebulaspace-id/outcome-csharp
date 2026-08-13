@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
 
-namespace NebulaSpace.Outcome.Samples.WebApi.Failures;
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 // ──────────────────────────────────────────────────────────────────────────
 // 1‑param generic — non‑paginated responses.  No Pagination property means

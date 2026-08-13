@@ -11,7 +11,6 @@ public class CursorQueryTests
 
         Assert.Null(query.Cursor);
         Assert.Equal(10, query.Limit);
-        Assert.Equal(CursorQuery.DefaultMaxLimit, query.MaxLimit);
     }
 
     [Theory]
@@ -29,30 +28,19 @@ public class CursorQueryTests
     }
 
     [Fact]
-    public void InitProp_WithCustomMaxLimit_IsUsedForClamping()
+    public void StaticMaxLimit_CanBeChangedForCustomCaps()
     {
-        var query = new CursorQuery { MaxLimit = 20 };
-        query.Limit = 99;
-
-        Assert.Equal(20, query.MaxLimit);
-        Assert.Equal(20, query.Limit);
-    }
-
-    [Fact]
-    public void StaticDefault_CanBeChangedForCustomCaps()
-    {
-        CursorQuery.DefaultMaxLimit = 100;
+        CursorQuery.MaxLimit = 100;
 
         try
         {
             var query = new CursorQuery { Limit = 999 };
 
-            Assert.Equal(100, query.MaxLimit);
             Assert.Equal(100, query.Limit);
         }
         finally
         {
-            CursorQuery.DefaultMaxLimit = 50;
+            CursorQuery.MaxLimit = 50;
         }
     }
 

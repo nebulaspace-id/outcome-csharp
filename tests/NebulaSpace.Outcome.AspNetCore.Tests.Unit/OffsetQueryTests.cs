@@ -39,43 +39,25 @@ public class OffsetQueryTests
 
         Assert.Equal(1, query.Page);
         Assert.Equal(10, query.Limit);
-        Assert.Equal(OffsetQuery.DefaultMaxPage, query.MaxPage);
-        Assert.Equal(OffsetQuery.DefaultMaxLimit, query.MaxLimit);
     }
 
     [Fact]
-    public void InitProps_WithCustomMaxes_AreUsedForClamping()
+    public void StaticMaxes_CanBeChangedForCustomCaps()
     {
-        var query = new OffsetQuery { MaxPage = 5, MaxLimit = 20 };
-        query.Page = 99;
-        query.Limit = 99;
-
-        Assert.Equal(5, query.MaxPage);
-        Assert.Equal(20, query.MaxLimit);
-        Assert.Equal(5, query.Page);
-        Assert.Equal(20, query.Limit);
-    }
-
-    [Fact]
-    public void StaticDefaults_CanBeChangedForCustomCaps()
-    {
-        OffsetQuery.DefaultMaxPage = 100;
-        OffsetQuery.DefaultMaxLimit = 200;
+        OffsetQuery.MaxPage = 100;
+        OffsetQuery.MaxLimit = 200;
 
         try
         {
             var query = new OffsetQuery { Page = 999, Limit = 999 };
 
-            Assert.Equal(100, query.MaxPage);
-            Assert.Equal(200, query.MaxLimit);
             Assert.Equal(100, query.Page);
             Assert.Equal(200, query.Limit);
         }
         finally
         {
-            // Reset for other tests.
-            OffsetQuery.DefaultMaxPage = 25;
-            OffsetQuery.DefaultMaxLimit = 50;
+            OffsetQuery.MaxPage = 25;
+            OffsetQuery.MaxLimit = 50;
         }
     }
 
