@@ -40,6 +40,10 @@ public static class OutcomeHttpServiceCollectionExtensions
         this IServiceCollection services,
         Action<OutcomeOptions>? configure = null)
     {
+        if (services.Any(d => d.ServiceType == typeof(OutcomeOptions)))
+            throw new InvalidOperationException(
+                "AddOutcome has already been called. Configure additional options using the existing registration.");
+
         var options = new OutcomeOptions();
         configure?.Invoke(options);
 

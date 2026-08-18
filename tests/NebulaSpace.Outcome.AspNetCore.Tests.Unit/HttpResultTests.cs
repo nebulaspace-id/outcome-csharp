@@ -548,6 +548,15 @@ public class HttpResultTests
         Assert.Equal("not_found", json.GetProperty("code").GetString());
     }
 
+    [Fact]
+    public void AddOutcome_ThrowsOnDoubleRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddOutcome();
+
+        Assert.Throws<InvalidOperationException>(() => services.AddOutcome());
+    }
+
     private sealed class UnknownFailureStub : Failure
     {
         public UnknownFailureStub() : base("boom", "unknown") { }
