@@ -35,7 +35,7 @@
   - [`Created` — no manual URI writing](#created--no-manual-uri-writing)
 - [Response envelopes](#response-envelopes)
   - [Why define your own envelopes](#why-define-your-own-envelopes)
-  - [Success envelope (AOT‑safe)](#success-envelope-aotsafe)
+  - [Success envelope](#success-envelope)
   - [Swagger & typed <c>data</c>](#swagger--typed-data)
   - [Error envelope — clean RFC 7807 by default](#error-envelope--clean-rfc-7807-by-default)
   - [Typed error envelope (recommended)](#typed-error-envelope-recommended)
@@ -43,6 +43,10 @@
   - [How mapping works](#how-mapping-works)
   - [What if you have your own exception handling — but it's not the final handler?](#what-if-you-have-your-own-exception-handling--but-its-not-the-final-handler)
 - [Pagination](#pagination)
+  - [Configuring caps](#configuring-caps)
+  - [Offset pagination](#offset-pagination)
+  - [Cursor pagination](#cursor-pagination)
+  - [Custom pagination](#custom-pagination)
 - [JSON serialization options](#json-serialization-options)
 - [Testing](#testing)
 - [Contributing](#contributing)
@@ -291,8 +295,8 @@ A subclass of a registered failure type inherits its nearest ancestor's mapping.
 ```csharp
 builder.Services.AddOutcome(options =>
 {
-    // Success envelope — any type implementing ISuccessEnvelope, AOT-safe, zero-reflection:
-    options.Success.SetResponse<SuccessResponse>();
+    // Success envelope — any open-generic type implementing ISuccessEnvelope<T>:
+    options.Success.SetResponse(typeof(SuccessResponse<>));
 
     // Error envelope — any type implementing IErrorEnvelope, AOT-safe, zero-reflection:
     options.Error.SetResponse<ErrorResponse>();
@@ -333,6 +337,7 @@ failure.ToErrorResponse(http);
 | `http.Ok(data)` | 200, raw or wrapped per `Success.Enabled` |
 | `http.Ok(data, pagination)` | 200 with pagination metadata |
 | `http.Created(data, idSelector)` | 201 with `Location` derived from the request path |
+| `http.Created(data, locationUri)` | 201 with a manually specified `Location` |
 | `http.NoContent()` | 204 |
 | `http.BadRequest(...)` / `http.NotFound(...)` / `http.Conflict(...)` / … | 4xx with the configured error envelope |
 | `http.FromFailure(failure)` | Map any failure to its response |
@@ -384,44 +389,42 @@ matching your API style guide. That is exactly what a typed envelope gives you:
 
 Defining an envelope is ~10 lines. Strongly recommended for any real API.
 
-### Success envelope (AOT‑safe)
+### Success envelope
 
-A success envelope is a type implementing `ISuccessEnvelope`. Its static `From` builds the
-per‑request body from the response intent (`SuccessDetails`) and the current request.
-Register it with the generic `<c>SetResponse&lt;T&gt;</c>` — compile‑time safe, AOT‑ready,
-zero‑reflection via `static abstract` dispatch:
+A success envelope is a type implementing `ISuccessEnvelope<T>`. Its static `From` builds
+the per‑request body from the payload, optional pagination metadata, and the current
+request. Register it with `SetResponse(typeof(…))` — the library closes `T` per request
+via `MakeGenericType` + cached `MethodInfo.Invoke` so Swagger sees the exact payload type:
 
 ```csharp
-public sealed class SuccessResponse : ISuccessEnvelope
+public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 {
     public int StatusCode { get; init; }
-    public object? Data { get; init; }
-    public IPageMetadata? Pagination { get; init; }
-    public string? TraceId { get; init; }
+    public TData? Data { get; init; }
 
-    public static ISuccessEnvelope From(SuccessDetails details, HttpContext http) => new SuccessResponse
-    {
-        StatusCode = details.StatusCode,
-        Data = details.Data,
-        Pagination = details.Pagination,
-        TraceId = http.TraceIdentifier,
-    };
+    public static ISuccessEnvelope<TData> From(
+        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData>
+        {
+            StatusCode = statusCode,
+            Data = data,
+        };
 }
 ```
 
 ```csharp
 builder.Services.AddOutcome(options =>
 {
-    options.Success.SetResponse<SuccessResponse>();
+    options.Success.SetResponse(typeof(SuccessResponse<>));
 });
 ```
 
-Every success becomes a `SuccessResponse`. The endpoint documents it:
+Every success becomes a `SuccessResponse<T>`. The endpoint documents it:
 
 ```csharp
-.Produces<SuccessResponse>()                                  // GET /orders/{id}
-.Produces<SuccessResponse>()                                  // GET /orders
-.Produces<SuccessResponse>(StatusCodes.Status201Created)      // POST /orders
+.Produces<SuccessResponse<Order>>()                                  // GET /orders/{id}
+.Produces<SuccessResponse<Order[]>>()                                // GET /orders
+.Produces<SuccessResponse<Order>>(StatusCodes.Status201Created)      // POST /orders
 ```
 
 When `Success.Enabled` is `false`, successes are returned raw — no wrapper, no `statusCode`.
@@ -429,38 +432,39 @@ Disable it with `options.Success.Enabled = false`.
 
 ### Swagger & typed <c>data</c>
 
-The non‑generic `ISuccessEnvelope` above shows `Data` as `object` in OpenAPI. For
-per‑endpoint typed `Data: Order`, implement `ISuccessEnvelope<T>` on an **open‑generic**
-type and register it with `SetResponse(typeof(…))`. The library closes `T` per request via
-`MakeGenericType` + cached `MethodInfo.Invoke` so Swagger sees the exact payload type:
+The 1‑param generic above already gives Swagger the exact `Data: Order` per endpoint. For
+**paginated** responses, implement a **2‑param** open‑generic envelope so the second
+parameter carries the concrete pagination type (`OffsetInfo` or `CursorInfo`):
 
 ```csharp
-public sealed class SuccessResponse<T> : ISuccessEnvelope<T>
+public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
 {
     public int StatusCode { get; init; }
-    public T? Data { get; init; }
-    public IPageMetadata? Pagination { get; init; }
+    public TData? Data { get; init; }
+    public TPage? Pagination { get; init; }
 
-    public static ISuccessEnvelope<T> From(
-        T data, IPageMetadata? pagination, HttpContext http, int statusCode)
-        => new SuccessResponse<T>
+    public static ISuccessEnvelope<TData> From(
+        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData, TPage>
         {
             StatusCode = statusCode,
             Data = data,
-            Pagination = pagination,
+            Pagination = pagination is TPage typed ? typed : default,
         };
 }
 ```
 
 ```csharp
 // NOT AOT‑safe — uses MakeGenericType + cached MethodInfo.Invoke at runtime.
-options.Success.SetResponse(typeof(SuccessResponse<>));
-.Produces<SuccessResponse<Order>>()      // Swagger knows Data: Order
+options.Success.SetResponse(typeof(SuccessResponse<>));   // non‑paginated
+options.Success.SetResponse(typeof(SuccessResponse<,>));  // paginated
+.Produces<SuccessResponse<Order>>()                       // Swagger knows Data: Order
+.Produces<SuccessResponse<Order[], OffsetInfo>>()         // Swagger knows Data + Pagination
 ```
 
 > **AOT warning:** <c>SetResponse(typeof(…))</c> breaks NativeAOT. For AOT publishing, use
-> the non‑generic <c>SetResponse&lt;SuccessResponse&gt;()</c> above instead — the only
-> trade‑off is Swagger shows `Data: object`.
+> the delegate overload <c>SetResponse(Func&lt;…&gt;)</c> instead — see
+> <c>SuccessOptions</c> for details. The trade‑off is Swagger shows `Data: object`.
 
 ### Error envelope — clean RFC 7807 by default
 
@@ -653,15 +657,16 @@ consistent error envelope.
 ## Pagination
 
 Both **offset** and **cursor** pagination are supported through a shared
-`IPageMetadata` interface — the pipeline works with either strategy via one type. The
-`Type` discriminator (`"offset"` / `"cursor"`) lets clients decide how to render
-pagination without sniffing which fields are non‑null.
+`IPaginationDetails` marker interface — the pipeline works with either strategy via one
+type. Custom implementations (keyset, time‑based, etc.) are welcome — implement
+`IPaginationDetails` with whatever fields your strategy needs and pass it to
+`http.Ok(data, myPagination)`.
 
 ### Configuring caps
 
 `PaginationOptions` — set at startup — defines the maximum page and limit a client can
-request. These are copied to static defaults on `PageQuery` and `CursorQuery` so
-`[AsParameters]` binding picks them up:
+request. `AddOutcome` discovers every `IPaginatedQuery` implementor and calls its
+`Configure` method to copy the options into the query type's static fields:
 
 ```csharp
 builder.Services.AddOutcome(options =>
@@ -671,8 +676,15 @@ builder.Services.AddOutcome(options =>
 });
 ```
 
-`MaxPage` and `MaxLimit` on the query types carry `[BindNever]` — clients can **never**
-inject their own caps through the query string.
+Default limits are `int.MaxValue` — effectively uncapped. Set values only when you want to
+limit what clients can request.
+
+The built-in `OffsetQuery` and `CursorQuery` already implement `IPaginatedQuery`. Custom
+query types that implement the marker are picked up automatically — no wiring needed.
+
+`MaxPage` and `MaxLimit` on the query types are static **fields** (not properties) to
+avoid ASP.NET Core's `RequestDelegateFactory` trying to bind them as query parameters —
+clients can never inject their own limits through the query string.
 
 ### Offset pagination
 
@@ -680,31 +692,31 @@ Three types work together:
 
 | Type | Role |
 | --- | --- |
-| `PageQuery` | Incoming `page` / `limit` parameters, bound from the query string |
-| `PageResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
-| `PageInfo` | Response metadata: `type: "offset"`, `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
+| `OffsetQuery` | Incoming `page` / `limit` parameters, bound from the query string |
+| `OffsetResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
+| `OffsetInfo` | Response metadata: `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
 
-**Service** returns a `PageResult<T>` — the page/limit live on the incoming `PageQuery`, so
+**Service** returns an `OffsetResult<T>` — the page/limit live on the incoming `OffsetQuery`, so
 the service only reports the raw `TotalCount`:
 
 ```csharp
-public PageResult<Order> GetOrders(PageQuery pageQuery)
+public OffsetResult<Order> GetOrders(OffsetQuery query)
 {
     var items = _orders
-        .Skip(pageQuery.Offset)          // (Page - 1) * Limit
-        .Take(pageQuery.Limit)
+        .Skip(query.Offset)          // (Page - 1) * Limit
+        .Take(query.Limit)
         .ToArray();
 
-    return new PageResult<Order> { Items = items, TotalCount = _orders.Count };
+    return new OffsetResult<Order> { Items = items, TotalCount = _orders.Count };
 }
 ```
 
-**Endpoint** binds `PageQuery` with `[AsParameters]` and maps the page into a response:
+**Endpoint** binds `OffsetQuery` with `[AsParameters]` and maps the page into a response:
 
 ```csharp
-group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrders(pageQuery)).ToHttpResult(http, page =>
-        http.Ok(page.Items, PageInfo.Create(pageQuery, (int)page.TotalCount))));
+group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrders(query)).ToHttpResult(http, page =>
+        http.Ok(page.Items, page.ToOffsetInfo(query))));
 ```
 
 `?page=2&limit=20` → the JSON payload:
@@ -714,7 +726,6 @@ group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IH
   "statusCode": 200,
   "data": [...],
   "pagination": {
-    "type": "offset",
     "page": 2,
     "limit": 20,
     "totalPages": 7,
@@ -724,7 +735,7 @@ group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IH
 }
 ```
 
-- `PageQuery.Offset` gives you the 0‑based offset — no more `(Page - 1) * Limit`.
+- `OffsetQuery.Offset` gives you the 0‑based offset — no more `(Page - 1) * Limit`.
 - Out‑of‑range values are clamped, never silently reset — `?page=999` becomes page `MaxPage`.
 - `[AsParameters]` is a **framework feature** (Minimal API binding), available since
    **.NET 7**.
@@ -735,7 +746,7 @@ group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IH
 | --- | --- |
 | `CursorQuery` | Incoming `cursor` / `limit` parameters, bound from the query string |
 | `CursorResult<T>` | Outgoing page from the service: `Items`, `PreviousCursor`, `NextCursor`, `TotalCount` |
-| `CursorInfo` | Response metadata: `type: "cursor"`, `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
+| `CursorInfo` | Response metadata: `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
 
 **Service** returns a `CursorResult<T>` — cursors are opaque strings; encoding/decoding is
 the service's responsibility:
@@ -772,7 +783,6 @@ group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery curso
   "statusCode": 200,
   "data": [...],
   "pagination": {
-    "type": "cursor",
     "nextCursor": "eyJsYXN0SWQiOjIwfQ",
     "hasMore": true,
     "totalItems": 137
@@ -785,6 +795,96 @@ group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery curso
 - `totalItems` may be `null` when the service doesn't compute the total count.
 - `CursorQuery.Limit` is clamped to `1..MaxLimit` — same cap as offset, configurable via
   `PaginationOptions.MaxLimit`.
+
+### Custom pagination
+
+Any pagination strategy — keyset, time‑based, composite — works out of the box. You need
+three things: a query type, a result type, and a metadata type implementing
+`IPaginationDetails`.
+
+**1. Query type** — implements `IPaginatedQuery` so `AddOutcome` configures its limits
+automatically:
+
+```csharp
+public sealed class KeysetQuery : IPaginatedQuery
+{
+    public static int MaxLimit = 50;       // field, not property (RDE IL bug)
+
+    private int _limit = 10;
+    public string? AfterKey { get; set; }
+
+    public int Limit
+    {
+        get => _limit;
+        set => _limit = Math.Clamp(value, 1, MaxLimit);
+    }
+
+    public static void Configure(PaginationOptions options)
+    {
+        MaxLimit = Math.Max(1, options.MaxLimit);
+    }
+}
+```
+
+**2. Result type** — returned by the service, carries items + navigation keys:
+
+```csharp
+public sealed class KeysetResult<T>
+{
+    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public string? NextKey { get; set; }
+    public string? PreviousKey { get; set; }
+    public bool HasMore { get; set; }
+    public long? TotalItems { get; set; }
+
+    public KeysetInfo ToKeysetInfo() => new()
+    {
+        NextKey = NextKey,
+        PreviousKey = PreviousKey,
+        HasMore = HasMore,
+        TotalItems = TotalItems,
+    };
+}
+```
+
+**3. Metadata type** — implements `IPaginationDetails`, goes into the success envelope:
+
+```csharp
+public sealed class KeysetInfo : IPaginationDetails
+{
+    public string? NextKey { get; set; }
+    public string? PreviousKey { get; set; }
+    public bool HasMore { get; set; }
+    public long? TotalItems { get; set; }
+}
+```
+
+**Endpoint** — one line, same pattern as offset/cursor:
+
+```csharp
+group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetProductsKeyset(query)).ToHttpResult(http, page =>
+        http.Ok(page.Items, page.ToKeysetInfo())))
+    .Produces<SuccessResponse<Product[], KeysetInfo>>();
+```
+
+`?limit=5` (first page) → the JSON payload:
+
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "nextKey": "a1b2c3d4-...",
+    "hasMore": true,
+    "totalItems": 25
+  }
+}
+```
+
+No registration changes needed — the existing `SuccessResponse<,>` (2‑param generic) closes
+`TPage` with `KeysetInfo` at runtime via `MakeGenericType`. Custom query types that
+implement `IPaginatedQuery` are discovered by `AddOutcome` automatically — no wiring.
 
 ---
 

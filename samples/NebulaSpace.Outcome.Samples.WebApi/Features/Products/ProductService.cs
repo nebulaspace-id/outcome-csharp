@@ -1,6 +1,7 @@
 using FluentValidation;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 
@@ -34,6 +35,9 @@ public sealed class ProductService : IProductService
 
     public CursorResult<Product> GetProductsCursor(CursorQuery query) =>
         _repo.GetAllCursor(query);
+
+    public KeysetResult<Product> GetProductsKeyset(KeysetQuery query) =>
+        _repo.GetAllKeyset(query);
 
     public async Task<Outcome<Product>> CreateProduct(CreateProductRequest request)
     {

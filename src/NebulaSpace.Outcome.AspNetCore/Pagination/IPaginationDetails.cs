@@ -1,19 +1,15 @@
 namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 
 /// <summary>
-/// Shared pagination metadata contract for all pagination strategies — offset, cursor,
-/// keyset, or custom. Implementations define their own properties beyond
-/// <see cref="Type"/>; the pipeline resolves the concrete type via
-/// <see cref="SuccessResponse{TData, TPage}"/> so System.Text.Json and Swagger
-/// serialize the full shape, not just this interface's single member.
+/// Marker interface for pagination metadata — offset, cursor, keyset, or custom.
+/// Implementations define their own properties; the pipeline resolves the concrete
+/// type via <see cref="SuccessResponse{TData, TPage}"/> so System.Text.Json and
+/// Swagger serialize the full shape, not just the interface members.
+///
+/// <para>
+/// Implement this on a class with whatever pagination fields your strategy needs
+/// (page/limit/totalPages, nextCursor/previousCursor, nextKey/hasMore, etc.) and
+/// pass it to <c>IHttpResultFactory.Ok&lt;T&gt;(T, IPaginationDetails)</c>.
+/// </para>
 /// </summary>
-public interface IPaginationDetails
-{
-    /// <summary>
-    /// Discriminator string identifying the pagination strategy.
-    /// Built-in values: <c>"offset"</c> for <see cref="OffsetInfo"/>,
-    /// <c>"cursor"</c> for <see cref="CursorInfo"/>.
-    /// Custom implementations should pick a unique, stable name.
-    /// </summary>
-    string Type { get; }
-}
+public interface IPaginationDetails { }

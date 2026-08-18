@@ -92,7 +92,6 @@ public class SuccessEnvelopeTests
         Assert.Equal(10, page.GetProperty("limit").GetInt32());
         Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
         Assert.Equal(37, page.GetProperty("totalItems").GetInt32());
-        Assert.Equal("offset", page.GetProperty("type").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
     }
 
@@ -117,7 +116,6 @@ public class SuccessEnvelopeTests
         using var doc = JsonDocument.Parse(capture.Body);
         var root = doc.RootElement;
         var page = root.GetProperty("pagination");
-        Assert.Equal("cursor", page.GetProperty("type").GetString());
         Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
         Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());

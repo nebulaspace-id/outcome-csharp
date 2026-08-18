@@ -52,14 +52,6 @@ public class OffsetInfoTests
     }
 
     [Fact]
-    public void Type_IsOffset()
-    {
-        var p = OffsetInfo.Create(page: 1, limit: 10, totalItems: 37);
-
-        Assert.Equal("offset", p.Type);
-    }
-
-    [Fact]
     public void HasMore_True_WhenMorePagesExist()
     {
         var p = OffsetInfo.Create(page: 1, limit: 10, totalItems: 37);

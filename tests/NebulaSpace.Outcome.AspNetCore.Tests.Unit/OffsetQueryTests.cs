@@ -13,9 +13,14 @@ public class OffsetQueryTests
     [InlineData(100, 25)] // clamped down to max
     public void Page_ClampsToBounds(int value, int expected)
     {
-        var query = new OffsetQuery { Page = value };
-
-        Assert.Equal(expected, query.Page);
+        var orig = OffsetQuery.MaxPage;
+        OffsetQuery.MaxPage = 25;
+        try
+        {
+            var query = new OffsetQuery { Page = value };
+            Assert.Equal(expected, query.Page);
+        }
+        finally { OffsetQuery.MaxPage = orig; }
     }
 
     [Theory]
@@ -27,9 +32,14 @@ public class OffsetQueryTests
     [InlineData(500, 50)] // clamped down to max
     public void Limit_ClampsToBounds(int value, int expected)
     {
-        var query = new OffsetQuery { Limit = value };
-
-        Assert.Equal(expected, query.Limit);
+        var orig = OffsetQuery.MaxLimit;
+        OffsetQuery.MaxLimit = 50;
+        try
+        {
+            var query = new OffsetQuery { Limit = value };
+            Assert.Equal(expected, query.Limit);
+        }
+        finally { OffsetQuery.MaxLimit = orig; }
     }
 
     [Fact]
@@ -44,6 +54,8 @@ public class OffsetQueryTests
     [Fact]
     public void StaticMaxes_CanBeChangedForCustomCaps()
     {
+        var origPage = OffsetQuery.MaxPage;
+        var origLimit = OffsetQuery.MaxLimit;
         OffsetQuery.MaxPage = 100;
         OffsetQuery.MaxLimit = 200;
 
@@ -56,8 +68,8 @@ public class OffsetQueryTests
         }
         finally
         {
-            OffsetQuery.MaxPage = 25;
-            OffsetQuery.MaxLimit = 50;
+            OffsetQuery.MaxPage = origPage;
+            OffsetQuery.MaxLimit = origLimit;
         }
     }
 

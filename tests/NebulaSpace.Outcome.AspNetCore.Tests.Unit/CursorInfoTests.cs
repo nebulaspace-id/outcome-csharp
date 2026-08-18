@@ -5,22 +5,6 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 public class CursorInfoTests
 {
     [Fact]
-    public void Type_IsCursor()
-    {
-        var query = new CursorQuery { Limit = 10 };
-        var result = new CursorResult<string>
-        {
-            Items = new[] { "a", "b" },
-            PreviousCursor = null,
-            NextCursor = "next-page",
-            TotalCount = 37,
-        };
-        var info = CursorInfo.Create(query, result);
-
-        Assert.Equal("cursor", info.Type);
-    }
-
-    [Fact]
     public void Create_CopiesCursorsFromResult()
     {
         var query = new CursorQuery { Limit = 10 };

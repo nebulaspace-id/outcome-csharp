@@ -13,11 +13,6 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 public sealed class OffsetInfo : IPaginationDetails
 {
     /// <summary>
-    /// Discriminator — always <c>"offset"</c>.
-    /// </summary>
-    public string Type => "offset";
-
-    /// <summary>
     /// Whether there is at least one more page after this one,
     /// i.e. <c>Page &lt; TotalPages</c>.
     /// </summary>

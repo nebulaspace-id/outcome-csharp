@@ -18,11 +18,12 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 public sealed class CreatedResult<T> : IResult
 {
     private readonly T _data;
-    private readonly Func<T, object> _idSelector;
+    private readonly Func<T, object>? _idSelector;
+    private readonly string? _locationUri;
     private readonly OutcomeOptions _options;
 
     /// <summary>
-    /// Creates a 201 result.
+    /// Creates a 201 result with a <c>Location</c> derived from the request path + id.
     /// </summary>
     /// <param name="data">The new entity.</param>
     /// <param name="idSelector">Extracts the id from the entity (e.g. <c>o => o.Id</c>).</param>
@@ -34,13 +35,24 @@ public sealed class CreatedResult<T> : IResult
         _options = options;
     }
 
+    /// <summary>
+    /// Creates a 201 result with a manually specified <c>Location</c>.
+    /// </summary>
+    /// <param name="data">The new entity.</param>
+    /// <param name="locationUri">The full <c>Location</c> header value.</param>
+    /// <param name="options">The configured <see cref="OutcomeOptions"/>.</param>
+    public CreatedResult(T data, string locationUri, OutcomeOptions options)
+    {
+        _data = data;
+        _locationUri = locationUri;
+        _options = options;
+    }
+
     /// <inheritdoc />
     public async Task ExecuteAsync(HttpContext httpContext)
     {
-        var id = _idSelector(_data);
-        var path = httpContext.Request.Path.ToString().TrimEnd('/');
-
-        httpContext.Response.Headers.Location = $"{path}/{id}";
+        httpContext.Response.Headers.Location = _locationUri
+            ?? $"{httpContext.Request.Path.ToString().TrimEnd('/')}/{_idSelector!(_data)}";
 
         // SuccessEnvelopeResult sets the status code, so we don't duplicate it here.
         var envelope = new SuccessEnvelopeResult<T>(

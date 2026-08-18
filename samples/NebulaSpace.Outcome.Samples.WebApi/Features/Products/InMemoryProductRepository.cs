@@ -82,6 +82,36 @@ public sealed class InMemoryProductRepository : IProductRepository
         };
     }
 
+    public KeysetResult<Product> GetAllKeyset(KeysetQuery query)
+    {
+        // Find the starting index: after the product whose Id matches AfterKey.
+        var startIndex = 0;
+        if (!string.IsNullOrEmpty(query.AfterKey) && Guid.TryParse(query.AfterKey, out var afterId))
+        {
+            var anchorIndex = _ordered.FindIndex(p => p.Id == afterId);
+            if (anchorIndex >= 0)
+                startIndex = anchorIndex + 1; // page starts AFTER the anchor
+        }
+
+        // Take Limit + 1 to determine HasMore without a separate count query.
+        var items = _ordered
+            .Skip(startIndex)
+            .Take(query.Limit + 1)
+            .ToArray();
+
+        var hasMore = items.Length > query.Limit;
+        var page = hasMore ? items[..query.Limit] : items;
+
+        return new KeysetResult<Product>
+        {
+            Items = page,
+            NextKey = hasMore ? page[^1].Id.ToString() : null,
+            PreviousKey = startIndex > 0 ? _ordered[startIndex - 1].Id.ToString() : null,
+            HasMore = hasMore,
+            TotalItems = _ordered.Count,
+        };
+    }
+
     public Product Add(Product product)
     {
         // Defense-in-depth invariant: the service already checks uniqueness and

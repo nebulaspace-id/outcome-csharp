@@ -25,14 +25,16 @@ public sealed class PaginationOptions
 {
     /// <summary>
     /// Maximum page number a client can request for offset pagination (<see cref="Pagination.OffsetQuery"/>).
-    /// Default 25. Clamped to at least 1.
+    /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
+    /// Clamped to at least 1 by the consuming query types.
     /// </summary>
-    public int MaxPage { get; set; } = 25;
+    public int MaxPage { get; set; } = int.MaxValue;
 
     /// <summary>
     /// Maximum items per page (limit) a client can request for both offset
     /// (<see cref="Pagination.OffsetQuery"/>) and cursor (<see cref="Pagination.CursorQuery"/>)
-    /// pagination. Default 50. Clamped to at least 1.
+    /// pagination. Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
+    /// Clamped to at least 1 by the consuming query types.
     /// </summary>
-    public int MaxLimit { get; set; } = 50;
+    public int MaxLimit { get; set; } = int.MaxValue;
 }

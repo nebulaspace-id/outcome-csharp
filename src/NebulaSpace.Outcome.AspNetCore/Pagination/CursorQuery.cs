@@ -10,18 +10,18 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// Values are clamped (never reset).
 /// </para>
 /// </summary>
-public sealed class CursorQuery
+public sealed class CursorQuery : IPaginatedQuery
 {
     /// <summary>
-    /// Default maximum items per page, overridden at startup from
-    /// <c>options.Pagination.MaxLimit</c>. Default 50.
+    /// Maximum items per page. Set from <c>options.Pagination.MaxLimit</c> at startup.
+    /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
     /// </summary>
     /// <remarks>
     /// A <b>field</b>, not a settable property: a <c>public static</c> property with a public
     /// setter makes ASP.NET Core's <c>RequestDelegateFactory</c> try to bind it as a query
     /// parameter and emit invalid IL (<see cref="System.InvalidProgramException"/>).
     /// </remarks>
-    public static int MaxLimit = 50;
+    public static int MaxLimit = int.MaxValue;
 
     private string? _cursor;
     private int _limit = 10;
@@ -48,5 +48,11 @@ public sealed class CursorQuery
     {
         get => _limit;
         set => _limit = Math.Clamp(value, 1, MaxLimit);
+    }
+
+    /// <inheritdoc />
+    public static void Configure(Options.PaginationOptions options)
+    {
+        MaxLimit = Math.Max(1, options.MaxLimit);
     }
 }

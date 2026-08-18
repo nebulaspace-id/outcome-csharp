@@ -22,14 +22,20 @@ public class CursorQueryTests
     [InlineData(500, 50)] // clamped down to max
     public void Limit_ClampsToBounds(int value, int expected)
     {
-        var query = new CursorQuery { Limit = value };
-
-        Assert.Equal(expected, query.Limit);
+        var orig = CursorQuery.MaxLimit;
+        CursorQuery.MaxLimit = 50;
+        try
+        {
+            var query = new CursorQuery { Limit = value };
+            Assert.Equal(expected, query.Limit);
+        }
+        finally { CursorQuery.MaxLimit = orig; }
     }
 
     [Fact]
     public void StaticMaxLimit_CanBeChangedForCustomCaps()
     {
+        var orig = CursorQuery.MaxLimit;
         CursorQuery.MaxLimit = 100;
 
         try
@@ -40,7 +46,7 @@ public class CursorQueryTests
         }
         finally
         {
-            CursorQuery.MaxLimit = 50;
+            CursorQuery.MaxLimit = orig;
         }
     }
 

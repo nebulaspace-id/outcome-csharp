@@ -48,6 +48,10 @@ public sealed class HttpResultFactory : IHttpResultFactory
         new CreatedResult<T>(data, idSelector, _options);
 
     /// <inheritdoc />
+    public IResult Created<T>(T data, string locationUri) =>
+        new CreatedResult<T>(data, locationUri, _options);
+
+    /// <inheritdoc />
     public IResult NoContent() =>
         Results.NoContent();
 

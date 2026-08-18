@@ -66,7 +66,6 @@ public class HttpResultTests
         Assert.Equal(10, page.GetProperty("limit").GetInt32());
         Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
         Assert.Equal(37, page.GetProperty("totalItems").GetInt32());
-        Assert.Equal("offset", page.GetProperty("type").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
     }
 
@@ -91,7 +90,6 @@ public class HttpResultTests
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         var page = json.GetProperty("pagination");
-        Assert.Equal("cursor", page.GetProperty("type").GetString());
         Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
         Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
@@ -119,7 +117,6 @@ public class HttpResultTests
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         var page = json.GetProperty("pagination");
-        Assert.Equal("keyset", page.GetProperty("type").GetString());
         Assert.Equal("abc-123", page.GetProperty("nextKey").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
         Assert.Equal(500, page.GetProperty("totalItems").GetInt32());
@@ -140,7 +137,6 @@ public class HttpResultTests
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.True(json.TryGetProperty("pagination", out _), "pagination must not be dropped");
         var page = json.GetProperty("pagination");
-        Assert.Equal("offset", page.GetProperty("type").GetString());
         Assert.Equal(2, page.GetProperty("page").GetInt32());
         Assert.Equal(5, page.GetProperty("limit").GetInt32());
         Assert.Equal(9, page.GetProperty("totalPages").GetInt32());
@@ -149,7 +145,6 @@ public class HttpResultTests
 
     private sealed class CustomKeysetPage : Pagination.IPaginationDetails
     {
-        public string Type => "keyset";
         public string? NextKey { get; set; }
         public string? PreviousKey { get; set; }
         public bool HasMore { get; set; }
@@ -204,6 +199,19 @@ public class HttpResultTests
         var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders/");
 
         Assert.Equal("/orders/5", capture.Location);
+    }
+
+    [Fact]
+    public async Task Created_WithManualUri_UsesProvidedLocation()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+        var order = new { Id = Guid.NewGuid() };
+        var capture = await Execute(factory, factory.Created(order, "/custom/orders/42"), path: "/orders");
+
+        Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
+        Assert.Equal("/custom/orders/42", capture.Location);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.Equal(201, json.GetProperty("statusCode").GetInt32());
     }
 
     // --- NoContent ---

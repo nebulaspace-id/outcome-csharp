@@ -1,5 +1,6 @@
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 
@@ -17,6 +18,9 @@ public interface IProductService
 
     /// <summary>Get a page of products (cursor pagination).</summary>
     CursorResult<Product> GetProductsCursor(CursorQuery query);
+
+    /// <summary>Get a page of products (keyset pagination — custom <see cref="KeysetInfo"/>).</summary>
+    KeysetResult<Product> GetProductsKeyset(KeysetQuery query);
 
     /// <summary>Create a product after validation and a uniqueness check.</summary>
     Task<Outcome<Product>> CreateProduct(CreateProductRequest request);

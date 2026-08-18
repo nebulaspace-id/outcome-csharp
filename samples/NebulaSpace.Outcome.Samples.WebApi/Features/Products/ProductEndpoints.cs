@@ -35,10 +35,16 @@ public static class ProductEndpoints
             Outcome.Success(service.GetProducts(query)).ToHttpResult(http, page => http.Ok(page.Items, page.ToOffsetInfo(query))))
             .Produces<SuccessResponse<Product[], OffsetInfo>>();
 
+        // List (keyset) — custom IPaginationDetails. Uses the product id as the
+        // opaque key; AfterKey = last id on the previous page (omit for first page).
+        group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
+            Outcome.Success(service.GetProductsKeyset(query)).ToHttpResult(http, page => http.Ok(page.Items, page.ToKeysetInfo())))
+            .Produces<SuccessResponse<Product[], KeysetInfo>>();
+
         // List (cursor) — cursor/limit bound from the query string.
-        // group.MapGet("paging/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
-        //     Outcome.Success(service.GetProductsCursor(query)).ToHttpResult(http, page => http.Ok(page.Items, page.ToCursorInfo(query))))
-        //     .Produces<SuccessResponse<Product[], CursorInfo>>();
+        group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
+            Outcome.Success(service.GetProductsCursor(query)).ToHttpResult(http, page => http.Ok(page.Items, page.ToCursorInfo(query))))
+            .Produces<SuccessResponse<Product[], CursorInfo>>();
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>

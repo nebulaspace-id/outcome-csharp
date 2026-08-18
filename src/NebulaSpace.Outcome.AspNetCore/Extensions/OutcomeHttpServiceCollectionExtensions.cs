@@ -43,11 +43,28 @@ public static class OutcomeHttpServiceCollectionExtensions
         var options = new OutcomeOptions();
         configure?.Invoke(options);
 
-        // Copy PaginationOptions to the static defaults so [AsParameters]-bound query
-        // types pick up the app's configured caps (they are parameterless for binding).
-        OffsetQuery.MaxPage = Math.Max(1, options.Pagination.MaxPage);
-        OffsetQuery.MaxLimit = Math.Max(1, options.Pagination.MaxLimit);
-        CursorQuery.MaxLimit = Math.Max(1, options.Pagination.MaxLimit);
+        // Discover every IPaginatedQuery implementor and let each one copy the app's
+        // pagination caps into its own static fields. Scans all loaded assemblies so
+        // user-defined query types are picked up automatically — no wiring needed.
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic) continue;
+
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
+            catch { continue; }
+
+            foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
+            {
+                var configureMethod = type.GetMethod(
+                    nameof(IPaginatedQuery.Configure),
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, [typeof(PaginationOptions)], null);
+
+                configureMethod?.Invoke(null, [options.Pagination]);
+            }
+        }
 
         services.AddSingleton(options);
         services.AddSingleton<IHttpResultFactory, HttpResultFactory>();

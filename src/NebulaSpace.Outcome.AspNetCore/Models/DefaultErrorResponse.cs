@@ -23,19 +23,23 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 public sealed class DefaultErrorResponse : IErrorEnvelope
 {
     /// <summary>Short, human‑readable summary of the problem (e.g. <c>"Not Found"</c>).</summary>
-    public string Title { get; set; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
 
     /// <summary>HTTP status code generated for this occurrence of the problem.</summary>
-    public int Status { get; set; }
+    public int Status { get; init; }
 
     /// <summary>Human‑readable explanation specific to this occurrence of the problem.</summary>
-    public string Detail { get; set; } = string.Empty;
+    public string Detail { get; init; } = string.Empty;
 
+    /// <summary>Field-level validation errors (RFC 9457): field name → array of messages.</summary>
+    public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+    
     /// <summary>Builds the clean RFC 7807 body from a failure's HTTP intent.</summary>
     public static IErrorEnvelope From(FailureDetails details, HttpContext httpContext) => new DefaultErrorResponse
     {
         Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
         Status = details.StatusCode,
         Detail = details.Message ?? string.Empty,
+        Errors = details.Errors,
     };
 }

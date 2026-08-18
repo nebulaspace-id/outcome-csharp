@@ -13,11 +13,6 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 public sealed class CursorInfo : IPaginationDetails
 {
     /// <summary>
-    /// Discriminator — always <c>"cursor"</c>.
-    /// </summary>
-    public string Type => "cursor";
-
-    /// <summary>
     /// Opaque cursor pointing to the previous page. <c>null</c> when this is the first
     /// page (omitted from JSON via <c>JsonIgnoreCondition.WhenWritingNull</c>).
     /// </summary>
