@@ -2,65 +2,83 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// Default <see cref="IHttpResultFactory"/> that builds ASP.NET Core <see cref="IResult"/>
 /// responses from payloads and failures, honoring the configured
-/// <see cref="ResultPatternOptions"/> supplied through constructor injection.
+/// <see cref="OutcomeOptions"/> supplied through constructor injection.
 /// </summary>
 public sealed class HttpResultFactory : IHttpResultFactory
 {
-    private readonly ResultPatternOptions _options;
-    private readonly IErrorResponseFactory _errorResponseFactory;
+    private readonly OutcomeOptions _options;
 
-    public HttpResultFactory(ResultPatternOptions options)
-        : this(options, new DefaultErrorResponseFactory())
-    {
-    }
-
-    public HttpResultFactory(ResultPatternOptions options, IErrorResponseFactory errorResponseFactory)
+    /// <summary>
+    /// Creates a factory bound to <paramref name="options"/>. One instance per host;
+    /// each host can configure the library independently.
+    /// </summary>
+    public HttpResultFactory(OutcomeOptions options)
     {
         _options = options;
-        _errorResponseFactory = errorResponseFactory;
     }
 
+    /// <inheritdoc />
     public IResult Ok<T>(T? data = default) =>
-        _options.SuccessEnvelope.Enabled
-            ? Results.Ok(SuccessResponse<T>.Ok(data))
-            : Results.Ok(data);
+        SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 
-    public IResult Ok<T>(T data, Pagination.Pagination pagination) =>
-        _options.SuccessEnvelope.Enabled
-            ? Results.Ok(SuccessResponse<T>.Ok(data, pagination))
-            : Results.Ok(data);
+    /// <inheritdoc />
+    public IResult Ok<T>(T data, Pagination.OffsetInfo offsetInfo) =>
+        SuccessEnvelopeResultFor(data, offsetInfo, StatusCodes.Status200OK);
+
+    /// <inheritdoc />
+    public IResult Ok<T>(T data, Pagination.CursorInfo cursorInfo) =>
+        SuccessEnvelopeResultFor(data, cursorInfo, StatusCodes.Status200OK);
+
+    /// <inheritdoc />
+    public IResult Ok<T>(T data, Pagination.IPaginationDetails pagination) =>
+        SuccessEnvelopeResultFor(data, pagination, StatusCodes.Status200OK);
+
+    private IResult SuccessEnvelopeResultFor<T>(T? data, IPaginationDetails? pagination, int statusCode) =>
+        new SuccessEnvelopeResult<T>(data, pagination, statusCode, _options);
 
     /// <inheritdoc />
     public IResult Created<T>(T data, Func<T, object> idSelector) =>
         new CreatedResult<T>(data, idSelector, _options);
 
+    /// <inheritdoc />
+    public IResult Created<T>(T data, string locationUri) =>
+        new CreatedResult<T>(data, locationUri, _options);
+
+    /// <inheritdoc />
     public IResult NoContent() =>
         Results.NoContent();
 
-    public IResult BadRequest(string? message = null, string? code = null, Dictionary<string, string>? errors = null) =>
+    /// <inheritdoc />
+    public IResult BadRequest(string? message = null, string? code = null, IReadOnlyDictionary<string, string[]>? errors = null) =>
         Envelope(new FailureDetails(StatusCodes.Status400BadRequest, message, code, errors));
 
+    /// <inheritdoc />
     public IResult Unauthorized(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status401Unauthorized, message, code));
 
+    /// <inheritdoc />
     public IResult Forbidden(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status403Forbidden, message, code));
 
+    /// <inheritdoc />
     public IResult NotFound(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status404NotFound, message, code));
 
+    /// <inheritdoc />
     public IResult Conflict(string? message = null, string? code = null) =>
         Envelope(new FailureDetails(StatusCodes.Status409Conflict, message, code));
 
+    /// <inheritdoc />
     public IResult FromFailure(Failure failure)
     {
-        // 1. An explicit mapping registered via options.Failures.Map<TFailure> wins over a
+        // 1. An explicit mapping via options.Error.MapFailure<TFailure> wins over a
         //    failure's own mapping, so callers can override built-in failures too.
         if (_options.TryGetFailureMapper(failure.GetType(), out var custom))
         {
@@ -78,21 +96,15 @@ public sealed class HttpResultFactory : IHttpResultFactory
         return Envelope(new FailureDetails(StatusCodes.Status500InternalServerError, failure.Message, failure.Code));
     }
 
-    /// <inheritdoc />
-    public IResult FromEnvelope(IErrorResponse envelope) =>
-        Envelope(envelope);
-
     /// <summary>
-    /// Builds the error envelope through the configured <see cref="IErrorResponseFactory"/>
-    /// and wraps it so configured properties are injected at execution time.
+    /// Builds the error envelope from a failure's HTTP intent, through the configured
+    /// <see cref="ErrorOptions"/> (typed envelope) or the default RFC 7807
+    /// <see cref="DefaultErrorResponse"/>.
     /// </summary>
     private IResult Envelope(FailureDetails details) =>
-        new ErrorEnvelopeResult(_errorResponseFactory.Create(details), _options);
+        new ErrorEnvelopeResult(details, _options);
 
-    /// <summary>
-    /// Wraps a concrete envelope (from a custom <c>Failures.Map</c>) so configured
-    /// properties are injected at execution time.
-    /// </summary>
-    private IResult Envelope(IErrorResponse envelope) =>
-        new ErrorEnvelopeResult(envelope, _options);
+    /// <inheritdoc />
+    public IResult FromFailureDetails(FailureDetails details) =>
+        Envelope(details);
 }

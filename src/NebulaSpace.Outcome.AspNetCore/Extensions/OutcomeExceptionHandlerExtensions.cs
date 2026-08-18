@@ -1,51 +1,43 @@
-using System.Linq;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
 
 namespace NebulaSpace.Outcome.AspNetCore.Extensions;
 
 /// <summary>
-/// Registers and wires the exception-handling middleware so unhandled exceptions produce
-/// the same error envelope as expected failures.
+/// Wires the exception‑handling middleware so unhandled exceptions produce the same
+/// error envelope as expected failures. Requires
+/// <see cref="OutcomeHttpServiceCollectionExtensions.AddOutcome"/> in
+/// <c>ConfigureServices</c> first — that single call registers the middleware, its
+/// options, and <c>IHttpResultFactory</c>.
 /// </summary>
 public static class OutcomeExceptionHandlerExtensions
 {
     /// <summary>
-    /// Registers the <see cref="OutcomeExceptionMiddleware"/> (and its options) in DI.
-    /// Call once from <c>ConfigureServices</c>. Then call <c>UseOutcomeExceptionHandler</c>
-    /// in the pipeline. Map known exception types via
-    /// <c>options.Exceptions.Map&lt;TException&gt;</c> to a specific envelope; unhandled
-    /// exceptions default to a generic 500 message. Enable
-    /// <see cref="OutcomeExceptionHandlerOptions.IncludeExceptionDetails"/> (typically in
-    /// Development) to surface the unhandled exception's message — mapped exceptions
-    /// bypass this gating and use their mapper's envelope as-is.
+    /// Adds the middleware to the pipeline. Should be registered <b>EARLY</b> (before
+    /// routing) so it catches exceptions from downstream middleware and endpoints alike.
+    ///
+    /// <para>
+    /// Requires <see cref="OutcomeHttpServiceCollectionExtensions.AddOutcome"/> in
+    /// <c>ConfigureServices</c> — that call registers <c>OutcomeOptions</c>,
+    /// <c>IHttpResultFactory</c>, and the middleware itself. No separate registration
+    /// is needed for exception handling.
+    /// </para>
+    ///
+    /// <para>
+    /// Middleware runs outer‑to‑inner: a middleware listed first wraps everything after
+    /// it. To log exceptions to your own store, register your logging middleware
+    /// <b>before</b> this one — it catches, records, then re‑throws so the handler
+    /// still produces the envelope.
+    /// </para>
     /// </summary>
-    public static IServiceCollection AddOutcomeExceptionHandler(
-        this IServiceCollection services,
-        Action<OutcomeExceptionHandlerOptions>? configure = null)
-    {
-        // Idempotent: calling AddOutcomeExceptionHandler twice (or in addition to an
-        // automatic registration) keeps the first-configured options.
-        if (services.Any(d => d.ServiceType == typeof(OutcomeExceptionMiddleware)))
-        {
-            return services;
-        }
-
-        var options = new OutcomeExceptionHandlerOptions();
-        configure?.Invoke(options);
-
-        services.AddSingleton(options);
-        services.AddTransient<OutcomeExceptionMiddleware>();
-        return services;
-    }
-
-    /// <summary>
-    /// Adds the middleware to the pipeline. Should be registered EARLY (before routing)
-    /// so it catches exceptions from downstream middleware and endpoints alike. Requires
-    /// <see cref="AddOutcomeExceptionHandler"/> in <c>ConfigureServices</c> (which in turn
-    /// needs <c>AddOutcomeHttp</c> for <c>IHttpResultFactory</c>).
-    /// </summary>
+    /// <example>
+    /// <code>
+    /// var app = builder.Build();
+    /// app.UseOutcomeExceptionHandler(); // BEFORE routing
+    /// app.UseRouting();
+    /// app.MapEndpoints();
+    /// </code>
+    /// </example>
     public static IApplicationBuilder UseOutcomeExceptionHandler(this IApplicationBuilder app)
         => app.UseMiddleware<OutcomeExceptionMiddleware>();
 }

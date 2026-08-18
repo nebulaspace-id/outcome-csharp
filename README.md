@@ -2,30 +2,70 @@
 
 # NebulaSpace Outcome
 
-**A tiny, dependency-free result pattern for .NET — with a first-class ASP.NET Core integration that turns outcomes into clean HTTP responses.**
+**A tiny, dependency-free result pattern for .NET with a first-class ASP.NET Core integration that turns outcomes into clean HTTP responses.**
 
 [![NuGet][outcome-shield]][outcome-nuget]
 [![NuGet][aspnetcore-shield]][aspnetcore-nuget]
 [![MIT License][license-shield]][license]
 
-`Outcome<T>` · `Failure` · `IHttpResultFactory` · `SuccessEnvelope` · `ErrorEnvelope` · exception mapping
+`Outcome<T>` · `Failure` · `IHttpResultFactory` · Success/Error envelopes · exception mapping
 
 </div>
 
 ---
 
+## Table of contents
+
+- [Why Outcome?](#why-outcome)
+- [Quick start](#quick-start)
+- [Packages](#packages)
+- [The core: `Outcome<T>`](#the-core-outcomet)
+  - [Creating outcomes](#creating-outcomes)
+  - [Reading the state](#reading-the-state)
+  - [Matching (the idiomatic handler)](#matching-the-idiomatic-handler)
+  - [Pattern matching over outcomes](#pattern-matching-over-outcomes)
+- [Failures](#failures)
+  - [Built-in failures](#built-in-failures)
+  - [Custom failures](#custom-failures)
+  - [`FromFailure` resolution order](#fromfailure-resolution-order)
+- [ASP.NET Core integration](#aspnet-core-integration)
+  - [Register the services](#register-the-services)
+  - [From outcome to response](#from-outcome-to-response)
+  - [`IHttpResultFactory` helpers](#ihttpresultfactory-helpers)
+  - [`Created` helpers](#created-helpers)
+- [Response envelopes](#response-envelopes)
+  - [Why define your own envelopes](#why-define-your-own-envelopes)
+  - [Success envelope](#success-envelope)
+  - [Swagger and typed data](#swagger-and-typed-data)
+  - [Error envelope (RFC 7807 default)](#error-envelope-rfc-7807-default)
+  - [Typed error envelope (recommended)](#typed-error-envelope-recommended)
+- [Exception handling](#exception-handling)
+  - [How mapping works](#how-mapping-works)
+  - [Using your own exception handling alongside Outcome](#using-your-own-exception-handling-alongside-outcome)
+- [Pagination](#pagination)
+  - [Configuring limits](#configuring-limits)
+  - [Offset pagination](#offset-pagination)
+  - [Cursor pagination](#cursor-pagination)
+  - [Custom pagination](#custom-pagination)
+- [JSON serialization options](#json-serialization-options)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
 ## Why Outcome?
 
-Exceptions are for exceptional things. But most business errors — "not found", "duplicate",
-"out of quota" — are **expected outcomes**, not bugs. When you model them as exceptions you
+Exceptions are for exceptional things. But most business errors ("not found", "duplicate",
+"out of quota") are **expected outcomes**, not bugs. When you model them as exceptions you
 pay the cost of `try/catch` control flow, lost compiler help, and a muddled contract.
 
 `Outcome<T>` makes the failure part of the method signature. A service says exactly what it
-can produce — a value, or a typed failure — and the caller is **forced** to handle both
+can produce (a value, or a typed failure) and the caller is **forced** to handle both
 branches. No hidden throw, no `.Result`, no guesswork.
 
 ```csharp
-// Before — failure is invisible, caught nowhere in particular:
+// Before: failure is invisible, caught nowhere in particular
 public async Task<Order> CreateOrder(CreateOrderRequest request)
 {
     if (await _repo.Exists(request.Product))
@@ -33,7 +73,7 @@ public async Task<Order> CreateOrder(CreateOrderRequest request)
     return await _repo.Save(new Order(request.Product));
 }
 
-// After — the contract is explicit, and the caller must handle both branches:
+// After: the contract is explicit, and the caller must handle both branches
 public async Task<Outcome<Order>> CreateOrder(CreateOrderRequest request)
 {
     if (await _repo.Exists(request.Product))
@@ -42,8 +82,9 @@ public async Task<Outcome<Order>> CreateOrder(CreateOrderRequest request)
 }
 ```
 
-The ASP.NET Core integration closes the loop: `Outcome<T>` → `IResult` in one call, with a
-consistent, configurable error envelope across expected failures **and** unhandled exceptions.
+The ASP.NET Core integration closes the loop: `Outcome<T>` becomes `IResult` in one call,
+with a consistent, configurable error envelope across expected failures and unhandled
+exceptions.
 
 ---
 
@@ -66,23 +107,32 @@ public sealed class GreetingService
 {
     public Outcome<string> Greet(string name) =>
         string.IsNullOrWhiteSpace(name)
-            ? Outcome.Fail(new BadRequestFailure("Nama tidak boleh kosong."))
-            : Outcome.Success($"Halo, {name}!");
+            ? Outcome.Fail(new BadRequestFailure("Name cannot be empty."))
+            : Outcome.Success($"Hello, {name}!");
 }
 ```
 
-**3. Map it to an HTTP response**
+**3. Register and map to an HTTP response**
 
 ```csharp
+using NebulaSpace.Outcome.AspNetCore.Extensions;
 using NebulaSpace.Outcome.AspNetCore.Http;
 
+// Register once in Program.cs:
+builder.Services.AddOutcome(options =>
+{
+    options.Success.SetResponse<SuccessResponse>();
+    options.Error.SetResponse<ErrorResponse>();
+});
+
+// Then in your endpoint:
 app.MapGroup("/greet")
    .MapGet("/{name}", (string name, IGreetingService service, IHttpResultFactory http) =>
        service.Greet(name).ToHttpResult(http, greeting => http.Ok(new { greeting })));
 ```
 
-Success invokes your handler; failure becomes the correct HTTP error automatically —
-**no `try/catch` in the endpoint, ever.**
+Success invokes your handler; failure becomes the correct HTTP error automatically.
+**No `try/catch` in the endpoint, ever.**
 
 > The full runnable sample lives in [`samples/NebulaSpace.Outcome.Samples.WebApi`](samples/NebulaSpace.Outcome.Samples.WebApi).
 
@@ -93,18 +143,20 @@ Success invokes your handler; failure becomes the correct HTTP error automatical
 | Package | What's inside | Targets | Dependencies |
 | --- | --- | --- | --- |
 | `NebulaSpace.Outcome` | `Outcome`, `Outcome<T>`, `Failure`, `Unit` | **netstandard2.0** | none |
-| `NebulaSpace.Outcome.AspNetCore` | `IHttpResultFactory`, options, failure types, pagination, exception handling | **net6.0** | core + `Microsoft.AspNetCore.App` (framework reference) |
+| `NebulaSpace.Outcome.AspNetCore` | `IHttpResultFactory`, options, failure types, pagination, exception handling | **net7.0** | core + `Microsoft.AspNetCore.App` (framework reference) |
 
-Because NuGet picks the compatible asset, a `netstandard2.0` / `net6.0` package installs on
-**every later runtime** — .NET 6, 7, 8, 9, 10, and .NET Framework 4.6.1+. `[AsParameters]`
-binding in your endpoints is a framework feature available since **.NET 7**.
+Because NuGet picks the compatible asset, a `netstandard2.0` / `net7.0` package installs on
+every later runtime (.NET 7, 8, 9, 10, and beyond). The **net7.0** floor enables
+[static abstract interface members](https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/static-abstract-interface-members)
+(C# 11), which the typed success/error envelopes build on. The core package stays
+`netstandard2.0` so it runs on .NET Framework 4.6.1+ as well.
 
 ---
 
 ## The core: `Outcome<T>`
 
 A discriminated-union style value: either a **success** (with a `Value`) or a **failure**
-(with a `Failure`). `Outcome<T>` is an **immutable `readonly struct`** — its state is
+(with a `Failure`). `Outcome<T>` is an **immutable `readonly struct`**. Its state is
 consistent by construction and can never change.
 
 ### Creating outcomes
@@ -133,7 +185,7 @@ Outcome<string> failed = Outcome.Fail(new NotFoundFailure("Order not found"));
 | `Match(onSuccess, onFailure)` | Collapse both branches into one value |
 | `Deconstruct(...)` | C# `switch` / deconstruction support |
 
-### Matching — the idiomatic handler
+### Matching (the idiomatic handler)
 
 `Match` forces you to handle both branches and collapses them into one result:
 
@@ -161,13 +213,13 @@ string message = result switch
 ## Failures
 
 Failures are immutable values derived from `Failure`. The base type carries a human-readable
-`Message` and an optional machine-readable `Code` — provide a code only when one is meaningful:
+`Message` and an optional machine-readable `Code`. Provide a code only when one is meaningful:
 
 ```csharp
 public abstract class Failure
 {
     public string Message { get; }
-    public string? Code { get; }             // optional — omit when there's no meaningful code
+    public string? Code { get; }             // optional, omit when there's no meaningful code
 
     protected Failure(string message);                    // code = null
     protected Failure(string message, string? code);
@@ -183,7 +235,7 @@ public sealed class NotFoundFailure : Failure
 
 ### Built-in failures
 
-These ship in the **AspNetCore** package and know their own HTTP intent — no registration needed:
+These ship in the **AspNetCore** package and know their own HTTP intent. No registration needed:
 
 | Failure | HTTP status | Code |
 | --- | --- | --- |
@@ -197,20 +249,20 @@ These ship in the **AspNetCore** package and know their own HTTP intent — no r
 
 ### Custom failures
 
-Three ways to give a failure an HTTP response — in increasing order of power:
+Three ways to give a failure an HTTP response, in increasing order of power:
 
-**1. `options.Failures.Map<TFailure>`** — register a mapping at startup. The returned
-envelope is used as-is (envelope properties still inject on top):
+**1. `options.Error.MapFailure<TFailure>`** registers a mapping at startup. The mapper returns
+HTTP intent, which the configured error envelope renders:
 
 ```csharp
-builder.Services.AddOutcomeHttp(options =>
+builder.Services.AddOutcome(options =>
 {
-    options.Failures.Map<QuotaExceededFailure>(f =>
-        ErrorResponse.UnprocessableEntity(f.Message, f.Code));
+    options.Error.MapFailure<QuotaExceededFailure>(f =>
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
 });
 ```
 
-**2. Implement `IHttpFailure`** — declare the failure's HTTP intent on the type itself.
+**2. Implement `IHttpFailure`** to declare the failure's HTTP intent on the type itself.
 The factory picks it up automatically (Open/Closed: new failures add HTTP behavior without
 touching any mapping code):
 
@@ -224,14 +276,14 @@ public sealed class QuotaExceededFailure : Failure, IHttpFailure
 }
 ```
 
-**3. A custom `IErrorResponseFactory`** — change the shape of *every* error response at
-once. See [Pluggable error shape](#pluggable-error-shape).
+**3. A typed error envelope** changes the shape of *every* error response to your own
+type, documented exactly in OpenAPI. See [Response envelopes](#response-envelopes).
 
 ### `FromFailure` resolution order
 
-1. **`options.Failures.Map<TFailure>`** — an explicit registration wins, even over built-in failures.
-2. **`IHttpFailure`** — the failure maps itself.
-3. **Unknown failures** — degrade to **500 Internal Server Error** (never throws).
+1. **`options.Error.MapFailure<TFailure>`** wins, even over built-in failures.
+2. **`IHttpFailure`** maps itself.
+3. **Unknown failures** degrade to **500 Internal Server Error** (never throws).
 
 A subclass of a registered failure type inherits its nearest ancestor's mapping.
 
@@ -242,23 +294,23 @@ A subclass of a registered failure type inherits its nearest ancestor's mapping.
 ### Register the services
 
 ```csharp
-builder.Services.AddOutcomeHttp(options =>
+builder.Services.AddOutcome(options =>
 {
-    options.SuccessEnvelope.Enabled = true;          // wrap successes in SuccessResponse<T>? (default: true)
+    // Success envelope: any open-generic type implementing ISuccessEnvelope<T>
+    options.Success.SetResponse(typeof(SuccessResponse<>));
 
-    // Inject extra properties into every ERROR envelope (never successes):
-    options.ErrorEnvelope.Add("traceId", ctx => ctx.TraceIdentifier);
-    options.ErrorEnvelope.Add("environment", _ => builder.Environment.EnvironmentName);
+    // Error envelope: any type implementing IErrorEnvelope, AOT-safe, zero-reflection
+    options.Error.SetResponse<ErrorResponse>();
 
-    // Map application-defined failures to responses:
-    options.Failures.Map<QuotaExceededFailure>(f =>
-        ErrorResponse.UnprocessableEntity(f.Message, f.Code));
+    // Map application-defined failures to HTTP intent:
+    options.Error.MapFailure<QuotaExceededFailure>(f =>
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
 });
 ```
 
-`AddOutcomeHttp` registers `ResultPatternOptions` and `IHttpResultFactory` in the DI
-container, so **multiple apps in one process can configure the library independently**.
-Envelope properties are opt-in — nothing is injected unless you register it.
+`AddOutcome` registers `OutcomeOptions` and `IHttpResultFactory` in the DI container, so
+**multiple apps in one process can configure the library independently**. The error shape is
+configured here. No `services.Replace`, no strategy interface to swap.
 
 ### From outcome to response
 
@@ -269,7 +321,7 @@ and `IResult`. Inject `IHttpResultFactory` into your endpoint or service and pas
 // Handle both branches with one call:
 result.ToHttpResult(http, order => http.Created(order, o => o.Id));
 
-// Async services (Task<Outcome<T>>) — await the outcome, then map:
+// Async services (Task<Outcome<T>>):
 await outcomeTask.ToHttpResultAsync(http, order => http.Created(order, o => o.Id));
 
 // ...or with an async success handler:
@@ -283,55 +335,150 @@ failure.ToErrorResponse(http);
 
 | Helper | Behavior |
 | --- | --- |
-| `http.Ok(data)` | 200, raw or wrapped per `SuccessEnvelope.Enabled` |
+| `http.Ok(data)` | 200, raw or wrapped per `Success.Enabled` |
 | `http.Ok(data, pagination)` | 200 with pagination metadata |
 | `http.Created(data, idSelector)` | 201 with `Location` derived from the request path |
+| `http.Created(data, locationUri)` | 201 with a manually specified `Location` |
 | `http.NoContent()` | 204 |
-| `http.BadRequest(...)` / `http.NotFound(...)` / `http.Conflict(...)` / … | 4xx with the configured error envelope |
+| `http.BadRequest(...)` / `http.NotFound(...)` / `http.Conflict(...)` / ... | 4xx with the configured error envelope |
 | `http.FromFailure(failure)` | Map any failure to its response |
-| `http.FromEnvelope(envelope)` | Wrap a concrete envelope so configured properties inject |
+| `http.FromFailureDetails(details)` | Build a response from HTTP intent (used by exception mappers) |
 
 Because it is resolved through DI, the factory honors the options registered for *that*
-application — no shared static state.
+application. No shared static state.
 
-### `Created` — no manual URI writing
+### `Created` helpers
 
-`http.Created` builds the `Location` header for you — you only supply the new entity's id:
+`http.Created` builds the `Location` header for you. You only supply the new entity's id:
 
 ```csharp
-// Before — you write the URI yourself:
+// Before: you write the URI yourself
 return Results.Created($"/orders/{order.Id}", order);
 
-// After — the path comes from the request; only the id is supplied:
+// After: the path comes from the request, only the id is supplied
 return result.ToHttpResult(http, order => http.Created(order, o => o.Id));
-// POST /orders        → Location: /orders/{id}
-// POST /admin/orders  → Location: /admin/orders/{id}
+// POST /orders        -> Location: /orders/{id}
+// POST /admin/orders  -> Location: /admin/orders/{id}
 ```
 
 The path is read from `HttpContext.Request.Path` when the response executes, so it can
 never drift out of sync with the route that served it.
 
+For cases where the resource URI doesn't follow the `{requestPath}/{id}` pattern (nested
+routes, absolute URLs, cross-resource references), use the manual overload:
+
+```csharp
+return result.ToHttpResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
+```
+
 ---
 
 ## Response envelopes
 
-### Success
+### Why define your own envelopes
 
-When `SuccessEnvelope.Enabled` (default), successes look like:
+> **You are strongly encouraged to define your own envelopes.**
 
-```json
+The defaults are deliberately minimal: a clean RFC 7807 problem response for errors and a
+thin `{ statusCode, data }` wrapper for successes. Real APIs usually want a consistent,
+documented shape across the whole company: a `traceId` on every response, a stable `code`
+for machine handling, a `requestId` echoed from the caller, a `version`, field-level errors
+matching your API style guide. That is exactly what a typed envelope gives you:
+
+- **Your type, serialized as-is.** The response body *is* `ErrorResponse` /
+  `SuccessResponse<T>`, not a runtime dictionary the library merges fields into. OpenAPI
+  documents the exact shape, typos are caught at compile time, and properties are real C#.
+- **One consistent body everywhere.** Expected failures, `MapFailure` results, mapped
+  exceptions, and unhandled exceptions all reduce to the same intent and render through
+  your one envelope. Successes get wrapped in your one success envelope too.
+- **Built once, fail-fast at startup.** Envelopes implement an interface with a static
+  `From` factory. If a type doesn't implement it, `SetResponse` throws at startup, not on
+  the first request that happens to hit an error.
+
+Defining an envelope is ~10 lines. Strongly recommended for any real API.
+
+### Success envelope
+
+A success envelope is a type implementing `ISuccessEnvelope<T>`. Its static `From` builds
+the per-request body from the payload, optional pagination metadata, and the current
+request. Register it with `SetResponse(typeof(...))`. The library closes `T` per request
+via `MakeGenericType` + cached `MethodInfo.Invoke` so Swagger sees the exact payload type:
+
+```csharp
+public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 {
-  "statusCode": 200,
-  "data": { "greeting": "Halo, Enrico!" }
+    public int StatusCode { get; init; }
+    public TData? Data { get; init; }
+
+    public static ISuccessEnvelope<TData> From(
+        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData>
+        {
+            StatusCode = statusCode,
+            Data = data,
+        };
 }
 ```
 
-Disable it to return the raw payload: `options.SuccessEnvelope.Enabled = false`.
+```csharp
+builder.Services.AddOutcome(options =>
+{
+    options.Success.SetResponse(typeof(SuccessResponse<>));
+});
+```
 
-### Error — clean RFC 7807 by default
+Every success becomes a `SuccessResponse<T>`. The endpoint documents it:
 
-Error responses **always** use an envelope (regardless of `SuccessEnvelope.Enabled`). The
-default is minimal RFC 7807 `ProblemDetails` — only `title`, `status`, and `detail`:
+```csharp
+.Produces<SuccessResponse<Order>>()                                  // GET /orders/{id}
+.Produces<SuccessResponse<Order[]>>()                                // GET /orders
+.Produces<SuccessResponse<Order>>(StatusCodes.Status201Created)      // POST /orders
+```
+
+When `Success.Enabled` is `false`, successes are returned raw with no wrapper and no
+`statusCode`. Disable it with `options.Success.Enabled = false`.
+
+### Swagger and typed data
+
+The 1-param generic above already gives Swagger the exact `Data: Order` per endpoint. For
+**paginated** responses, implement a **2-param** open-generic envelope so the second
+parameter carries the concrete pagination type (`OffsetInfo` or `CursorInfo`):
+
+```csharp
+public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
+{
+    public int StatusCode { get; init; }
+    public TData? Data { get; init; }
+    public TPage? Pagination { get; init; }
+
+    public static ISuccessEnvelope<TData> From(
+        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData, TPage>
+        {
+            StatusCode = statusCode,
+            Data = data,
+            Pagination = pagination is TPage typed ? typed : default,
+        };
+}
+```
+
+```csharp
+// NOT AOT-safe: uses MakeGenericType + cached MethodInfo.Invoke at runtime.
+options.Success.SetResponse(typeof(SuccessResponse<>));   // non-paginated
+options.Success.SetResponse(typeof(SuccessResponse<,>));  // paginated
+.Produces<SuccessResponse<Order>>()                       // Swagger knows Data: Order
+.Produces<SuccessResponse<Order[], OffsetInfo>>()         // Swagger knows Data + Pagination
+```
+
+> **AOT warning:** `SetResponse(typeof(...))` breaks NativeAOT. For AOT publishing, use
+> the delegate overload `SetResponse(Func<...>)` instead. See `SuccessOptions` for details.
+> The trade-off is Swagger shows `Data: object`.
+
+### Error envelope (RFC 7807 default)
+
+Error responses **always** use an envelope (regardless of `Success.Enabled`). If you
+don't call `Error.SetResponse(...)`, the default is minimal RFC 7807
+`DefaultProblemDetails` with only `title`, `status`, and `detail`:
 
 ```json
 {
@@ -342,144 +489,423 @@ default is minimal RFC 7807 `ProblemDetails` — only `title`, `status`, and `de
 ```
 
 No `type`, `traceId`, `path`, `errorCode`, or custom properties unless you configure them.
-The `title` comes from the status's standard reason phrase; `detail` carries the failure's
-message (omitted when there is none).
+`DefaultProblemDetails` is non-nullable, so its OpenAPI schema is clean and `title`,
+`status`, and `detail` are always present. `detail` is an empty string when the failure has
+no message. The `title` comes from the status's standard reason phrase. Call
+`Error.SetResponse(...)` only when you want a different error body, which is **recommended**.
 
-### Adding envelope properties
+### Typed error envelope (recommended)
 
-`ErrorEnvelopeOptions.Add` registers per-request properties, computed from `HttpContext` at
-execution time:
+`ErrorOptions.SetResponse<T>()` makes the error body **any class you define** that
+implements `IErrorEnvelope`. The library serializes that type as-is and writes the HTTP
+status from the failure's intent (`FailureDetails.StatusCode`):
+
+- **OpenAPI documents the exact body.** `.Produces<ErrorResponse>(404)` describes
+  precisely what the library writes.
+- **Per-request fields are real C# properties.** `traceId`, `path`, `environment` are
+  typed, not string keys in a runtime dictionary. Typos are caught at compile time.
+- **One body everywhere.** Expected failures, `MapFailure` results, and mapped
+  exceptions all reduce to a `FailureDetails`, which the envelope turns into this one shape.
+- **AOT-safe, zero-reflection.** `SetResponse<T>()` dispatches through
+  `IErrorEnvelope.From` via `static abstract`, with no `GetMethod`/`Invoke` at all.
+
+The library separates a failure's **intent** from the **shape** of the error body:
+
+1. `IHttpFailure.ToDetails()` (or a `MapFailure` / `MapException` mapper) declares
+   intent: status code, message, code, field errors (`FailureDetails`).
+2. `ErrorOptions.SetResponse<T>()` turns that intent into your concrete error body,
+   any type implementing `IErrorEnvelope`, with zero-reflection `static abstract` dispatch.
 
 ```csharp
-builder.Services.AddOutcomeHttp(options =>
+public sealed class ErrorResponse : IErrorEnvelope
 {
-    options.ErrorEnvelope.Add("traceId", ctx => ctx.TraceIdentifier);
-    options.ErrorEnvelope.Add("path", ctx => ctx.Request.Path.ToString());
+    public int? StatusCode { get; init; }
+    public string? Code { get; init; }
+    public string? Message { get; init; }
+    public string? TraceId { get; init; }
+    public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+
+    public static IErrorEnvelope From(FailureDetails details, HttpContext context) => new ErrorResponse
+    {
+        StatusCode = details.StatusCode,
+        Code = details.Code,
+        Message = details.Message,
+        TraceId = context.TraceIdentifier,
+        Errors = details.Errors,   // RFC 9457: field name -> array of messages
+    };
+}
+
+builder.Services.AddOutcome(options =>
+{
+    options.Error.SetResponse<ErrorResponse>();
 });
 ```
 
+The endpoint documents the error shape it actually produces:
+
+```csharp
+.MapGet("/{id}", ...)
+.Produces<SuccessResponse<Order>>()
+.Produces<ErrorResponse>(StatusCodes.Status404NotFound);
+```
+
+Every error body is now `ErrorResponse`:
+
 ```json
 {
-  "title": "Not Found",
-  "status": 404,
-  "detail": "Order not found",
-  "traceId": "0HLMS12B6V4H6:00000001",
-  "path": "/orders/42"
+  "statusCode": 404,
+  "code": "not_found",
+  "message": "Order not found",
+  "traceId": "0HLMS12B6V4H6:00000001"
 }
 ```
 
-Properties are injected **at the source** — no response buffering, no JSON re-serialization,
-no string-matching against other responses. Only errors produced by this library receive
-them; responses from other middleware are never touched.
+The HTTP status is written from the failure's intent. Your envelope is pure body, free to
+be any type. No strategy interface, no string keys, no runtime injection. Everything (the
+envelope type, its per-request fields, and the mappings) is configured once at
+`AddOutcome`. Skip `SetResponse(...)` entirely and the default remains clean RFC 7807
+`DefaultProblemDetails`.
 
 ---
 
 ## Exception handling
 
 Expected failures map to error envelopes automatically. **Unhandled exceptions** would
-normally fall through to ASP.NET Core's default error page — a different shape. The
+normally fall through to ASP.NET Core's default error page, a different shape. The
 exception-handling middleware converts them into the **same envelope**, so every error is
 consistent.
 
 ```csharp
-builder.Services.AddOutcomeHttp(options => { /* ... */ });
-builder.Services.AddOutcomeExceptionHandler(options =>
+builder.Services.AddOutcome(options =>
 {
-    // Map known exception types to a specific envelope. The error code comes from the
-    // exception instance, not a hardcoded string:
-    options.Exceptions.Map<DomainException>(ex =>
-        ErrorResponse.UnprocessableEntity(ex.Message, ex.Code));
+    // Success and error envelopes (configured above), plus exception mappers:
+    options.Error.MapException<DomainException>(ex =>
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code));
 
-    // FluentValidation → 400 with field errors. Multiple messages per property are joined:
-    options.Exceptions.Map<ValidationException>(ex =>
-        ErrorResponse.BadRequest("Validation Error",
+    // FluentValidation -> 400 with field errors. Per RFC 9457 each field maps to an
+    // ARRAY of messages (one message is a single-element array):
+    options.Error.MapException<ValidationException>(ex =>
+        new FailureDetails(
+            StatusCodes.Status400BadRequest,
+            "Validation Error",
+            code: "validation_error",
             errors: ex.Errors
                 .GroupBy(e => e.PropertyName)
                 .ToDictionary(g => g.Key,
-                              g => string.Join("; ", g.Select(e => e.ErrorMessage)))));
+                              g => g.Select(e => e.ErrorMessage).ToArray())));
 
     // Only surface UNHANDLED exception details in Development:
-    options.IncludeExceptionDetails = builder.Environment.IsDevelopment();
+    options.Error.IncludeExceptionDetails = builder.Environment.IsDevelopment();
 });
 
 var app = builder.Build();
-app.UseOutcomeExceptionHandler();   // BEFORE routing — catches downstream middleware too
+app.UseOutcomeExceptionHandler();   // BEFORE routing, catches downstream middleware too
 ```
 
 ### How mapping works
 
-- **`options.Exceptions.Map<TException>`** behaves like `Failures.Map<TFailure>`: register
-  any exception type (a subclass inherits its nearest registered base), and the mapper's
-  envelope is returned **as-is** — bypassing the generic 500 fallback and
-  `IncludeExceptionDetails` gating. Envelope properties (`traceId`, …) still inject on top.
+- **`options.Error.MapException<TException>`** behaves like `MapFailure<TFailure>`: register
+  any exception type (a subclass inherits its nearest registered base). The mapper returns
+  HTTP intent (`FailureDetails`), which the configured error envelope renders, bypassing
+  the generic 500 fallback and `IncludeExceptionDetails` gating. Per-request fields
+  (`traceId`, etc.) come from the envelope's own factory.
 - **Unmapped exceptions** fall through to the generic fallback:
   - Logged **in full** (with stack trace) via `ILogger`.
-  - Rewritten as a clean RFC 7807 `ProblemDetails` with status **500** — through
-    `FromFailure`, so it shares the same shape factory, envelope properties, and
-    `Failures.Map` overrides as every other error.
+  - Rewritten as a clean RFC 7807 `DefaultProblemDetails` with status **500**, through
+    `FromFailure`, so it shares the same error envelope as every other error.
   - `IncludeExceptionDetails = false` (default) returns a generic message and never leaks
     `ex.Message` to the client. It has **no effect** on mapped exceptions.
   - If the response has already started streaming, the exception is re-thrown rather than
     corrupting the output.
 
+### Using your own exception handling alongside Outcome
+
+`UseOutcomeExceptionHandler` only renders the response. It doesn't stop you from persisting
+exceptions elsewhere. To log an exception to your own store, wrap it with middleware that
+sits **before** (outside) the exception handler, catches, records, then re-throws so the
+handler still produces the envelope:
+
+```csharp
+// Register a service that writes the exception (DB, queue, etc.) in DI:
+builder.Services.AddScoped<IExceptionLogService, ExceptionLogService>();
+
+var app = builder.Build();
+
+// 1. Your logging middleware FIRST (outermost): catches, records, re-throws
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        await context.RequestServices
+            .GetRequiredService<IExceptionLogService>()
+            .LogAsync(context, ex);
+        throw;   // let the exception handler below produce the error envelope
+    }
+});
+
+// 2. THEN the outcome exception handler (inner): renders the same error envelope
+app.UseOutcomeExceptionHandler();
+```
+
+The key is **ordering**: your catch-all middleware must be registered **before**
+`UseOutcomeExceptionHandler()`. Middleware runs outer-to-inner, so a middleware listed
+first wraps everything after it. It sees the exception before the handler does. Putting
+your logging middleware *after* the handler would mean it never sees exceptions thrown
+inside endpoints, because the handler (outer) catches them first. Every exception (mapped
+or unmapped) flows through your middleware and still ends up as the one consistent error
+envelope.
+
 ---
 
 ## Pagination
+
+Both **offset** and **cursor** pagination are supported through a shared
+`IPaginationDetails` marker interface. The pipeline works with either strategy via one
+type. Custom implementations (keyset, time-based, etc.) are welcome. Implement
+`IPaginationDetails` with whatever fields your strategy needs and pass it to
+`http.Ok(data, myPagination)`.
+
+### Configuring limits
+
+`PaginationOptions`, set at startup, defines the maximum page and limit a client can
+request. `AddOutcome` discovers every `IPaginatedQuery` implementor and calls its
+`Configure` method to copy the options into the query type's static fields:
+
+```csharp
+builder.Services.AddOutcome(options =>
+{
+    options.Pagination.MaxPage = 25;    // max page number for offset
+    options.Pagination.MaxLimit = 50;   // max items per page for both strategies
+});
+```
+
+Default limits are `int.MaxValue` (effectively uncapped). Set values only when you want to
+limit what clients can request.
+
+The built-in `OffsetQuery` and `CursorQuery` already implement `IPaginatedQuery`. Custom
+query types that implement the marker are picked up automatically. No wiring needed.
+
+`MaxPage` and `MaxLimit` on the query types are static **fields** (not properties) to
+avoid ASP.NET Core's `RequestDelegateFactory` trying to bind them as query parameters.
+Clients can never inject their own limits through the query string.
+
+### Offset pagination
 
 Three types work together:
 
 | Type | Role |
 | --- | --- |
-| `PageQuery` | Incoming `page` / `pageSize` parameters, bound from the query string |
-| `PagedResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
-| `Pagination` | Response metadata: `Page`, `PageSize`, `TotalPages`, `TotalItems` |
+| `OffsetQuery` | Incoming `page` / `limit` parameters, bound from the query string |
+| `OffsetResult<T>` | Outgoing page from the service: `Items` + `TotalCount` |
+| `OffsetInfo` | Response metadata: `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
 
-**Service** returns a `PagedResult<T>` — the page/size live on the incoming `PageQuery`, so
-the service only reports the raw `TotalCount`:
+**Service** returns an `OffsetResult<T>`. The page/limit live on the incoming `OffsetQuery`,
+so the service only reports the raw `TotalCount`:
 
 ```csharp
-public PagedResult<Order> GetOrders(PageQuery pageQuery)
+public OffsetResult<Order> GetOrders(OffsetQuery query)
 {
     var items = _orders
-        .Skip(pageQuery.Offset)          // (Page - 1) * PageSize
-        .Take(pageQuery.PageSize)
+        .Skip(query.Offset)          // (Page - 1) * Limit
+        .Take(query.Limit)
         .ToArray();
 
-    return new PagedResult<Order> { Items = items, TotalCount = _orders.Count };
+    return new OffsetResult<Order> { Items = items, TotalCount = _orders.Count };
 }
 ```
 
-**Endpoint** binds `PageQuery` with `[AsParameters]` and maps the page into a response:
+**Endpoint** binds `OffsetQuery` with `[AsParameters]` and maps the page into a response:
 
 ```csharp
-group.MapGet("/", (IOrderService service, [AsParameters] PageQuery pageQuery, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrders(pageQuery)).ToHttpResult(http, page =>
-        http.Ok(page.Items, Pagination.Create(pageQuery, (int)page.TotalCount))));
+group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrders(query)).ToHttpResult(http, page =>
+        http.Ok(page.Items, page.ToOffsetInfo(query))));
 ```
 
-- `[AsParameters]` binds each property from the query string (`?page=2&pageSize=20`).
-- `PageQuery.Offset` gives you the 0-based offset directly — no more `(Page - 1) * PageSize`.
-- `PageQuery` clamps `page` to `1..25` and `pageSize` to `1..50` by default, so a client
-  cannot ask for an unbounded page. Out-of-range values are clamped, never silently reset —
-  `?page=999` becomes page `25`.
+`?page=2&limit=20` produces:
 
-> **Note:** `[AsParameters]` is a **framework feature** (Minimal API binding), available
-> since **.NET 7**. The library itself does not depend on it — on .NET 6 you can bind
-> `PageQuery` manually (e.g. `[FromQuery] int page`).
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "page": 2,
+    "limit": 20,
+    "totalPages": 7,
+    "totalItems": 137,
+    "hasMore": true
+  }
+}
+```
+
+- `OffsetQuery.Offset` gives you the 0-based offset, no more `(Page - 1) * Limit`.
+- Out-of-range values are clamped, never silently reset. `?page=999` becomes page `MaxPage`.
+- `[AsParameters]` is a **framework feature** (Minimal API binding), available since
+   **.NET 7**.
+
+### Cursor pagination
+
+| Type | Role |
+| --- | --- |
+| `CursorQuery` | Incoming `cursor` / `limit` parameters, bound from the query string |
+| `CursorResult<T>` | Outgoing page from the service: `Items`, `PreviousCursor`, `NextCursor`, `TotalCount` |
+| `CursorInfo` | Response metadata: `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
+
+**Service** returns a `CursorResult<T>`. Cursors are opaque strings; encoding/decoding is
+the service's responsibility:
+
+```csharp
+public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
+{
+    var startIndex = Decode(cursorQuery.Cursor); // null -> 0
+    var items = _orders.Skip(startIndex).Take(cursorQuery.Limit).ToArray();
+    var endIndex = startIndex + items.Length;
+
+    return new CursorResult<Order>
+    {
+        Items = items,
+        PreviousCursor = startIndex == 0 ? null : Encode(Math.Max(0, startIndex - cursorQuery.Limit)),
+        NextCursor = endIndex < _orders.Count ? Encode(endIndex) : null,
+        TotalCount = _orders.Count,
+    };
+}
+```
+
+**Endpoint** binds `CursorQuery` with `[AsParameters]`:
+
+```csharp
+group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+        http.Ok(page.Items, CursorInfo.Create(cursorQuery, page))));
+```
+
+`?limit=20` (first page) produces:
+
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "nextCursor": "eyJsYXN0SWQiOjIwfQ",
+    "hasMore": true,
+    "totalItems": 137
+  }
+}
+```
+
+- `previousCursor` is `null` on the first page (omitted from JSON).
+- `nextCursor` is `null` on the last page (omitted from JSON), `hasMore` is `false`.
+- `totalItems` may be `null` when the service doesn't compute the total count.
+- `CursorQuery.Limit` is clamped to `1..MaxLimit`, same cap as offset, configurable via
+  `PaginationOptions.MaxLimit`.
+
+### Custom pagination
+
+Any pagination strategy (keyset, time-based, composite) works out of the box. You need
+three things: a query type, a result type, and a metadata type implementing
+`IPaginationDetails`.
+
+**1. Query type** implements `IPaginatedQuery` so `AddOutcome` configures its limits
+automatically:
+
+```csharp
+public sealed class KeysetQuery : IPaginatedQuery
+{
+    public static int MaxLimit = 50;       // field, not property (RDE IL bug)
+
+    private int _limit = 10;
+    public string? AfterKey { get; set; }
+
+    public int Limit
+    {
+        get => _limit;
+        set => _limit = Math.Clamp(value, 1, MaxLimit);
+    }
+
+    public static void Configure(PaginationOptions options)
+    {
+        MaxLimit = Math.Max(1, options.MaxLimit);
+    }
+}
+```
+
+**2. Result type** is returned by the service, carries items + navigation keys:
+
+```csharp
+public sealed class KeysetResult<T>
+{
+    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public string? NextKey { get; set; }
+    public string? PreviousKey { get; set; }
+    public bool HasMore { get; set; }
+    public long? TotalItems { get; set; }
+
+    public KeysetInfo ToKeysetInfo() => new()
+    {
+        NextKey = NextKey,
+        PreviousKey = PreviousKey,
+        HasMore = HasMore,
+        TotalItems = TotalItems,
+    };
+}
+```
+
+**3. Metadata type** implements `IPaginationDetails`, goes into the success envelope:
+
+```csharp
+public sealed class KeysetInfo : IPaginationDetails
+{
+    public string? NextKey { get; set; }
+    public string? PreviousKey { get; set; }
+    public bool HasMore { get; set; }
+    public long? TotalItems { get; set; }
+}
+```
+
+**Endpoint**, one line, same pattern as offset/cursor:
+
+```csharp
+group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetProductsKeyset(query)).ToHttpResult(http, page =>
+        http.Ok(page.Items, page.ToKeysetInfo())))
+    .Produces<SuccessResponse<Product[], KeysetInfo>>();
+```
+
+`?limit=5` (first page) produces:
+
+```json
+{
+  "statusCode": 200,
+  "data": [...],
+  "pagination": {
+    "nextKey": "a1b2c3d4-...",
+    "hasMore": true,
+    "totalItems": 25
+  }
+}
+```
+
+No registration changes needed. The existing `SuccessResponse<,>` (2-param generic) closes
+`TPage` with `KeysetInfo` at runtime via `MakeGenericType`. Custom query types that
+implement `IPaginatedQuery` are discovered by `AddOutcome` automatically. No wiring.
 
 ---
 
 ## JSON serialization options
 
-The library writes error envelopes with `WriteAsJsonAsync`, which honors your app's JSON
-serializer options. A best-practice setup — nulls omitted, camelCase, strict numbers, enums
-as strings — is configured **separately for Minimal API and MVC**:
+The library writes envelopes with `WriteAsJsonAsync`, which honors your app's JSON
+serializer options. A best-practice setup (nulls omitted, camelCase, strict numbers, enums
+as strings) is configured **separately for Minimal API and MVC**:
 
 ```csharp
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// Minimal API — affects Results.* and WriteAsJsonAsync:
+// Minimal API: affects Results.* and WriteAsJsonAsync
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
@@ -488,7 +914,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
-// MVC (controllers) — configured separately:
+// MVC (controllers): configured separately
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
 {
     options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
@@ -498,73 +924,8 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
 });
 ```
 
-Configured once, null properties are omitted everywhere — success envelopes, error
+Configured once, null properties are omitted everywhere: success envelopes, error
 envelopes, and your own DTOs.
-
----
-
-## Pluggable error shape
-
-The library separates a failure's **intent** from the **shape** of the error envelope:
-
-- `IHttpFailure.ToDetails()` declares intent — status code, message, code, field errors
-  (`FailureDetails`) — independent of serialization.
-- `IErrorResponseFactory` (a DI strategy) turns those details into a concrete
-  `IErrorResponse` envelope.
-
-The default factory produces the clean RFC 7807 `OutcomeProblemDetails` shown above. To
-change the shape of *every* error response, replace the factory.
-
-### Example: add `errorCode` and field errors to the default problem details
-
-A small custom factory can enrich the body while reusing the built-in `OutcomeProblemDetails`:
-
-```csharp
-public sealed class EnrichedProblemDetailsFactory : IErrorResponseFactory
-{
-    public IErrorResponse Create(FailureDetails details)
-    {
-        var problemDetails = new OutcomeProblemDetails
-        {
-            Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
-            Status = details.StatusCode,
-            Detail = details.Message,
-        };
-
-        if (details.Code is not null)
-            problemDetails.Extensions["errorCode"] = details.Code;
-
-        if (details.Errors is { } errors)
-            problemDetails.Extensions["errors"] = errors;
-
-        return problemDetails;
-    }
-}
-```
-
-Register it, replacing the default factory:
-
-```csharp
-using Microsoft.Extensions.DependencyInjection.Extensions;
-
-builder.Services.AddOutcomeHttp();
-builder.Services.Replace(
-    ServiceDescriptor.Singleton<IErrorResponseFactory, EnrichedProblemDetailsFactory>());
-```
-
-Every error body is now enriched, with `traceId`/`path` injected only if registered:
-
-```json
-{
-  "title": "Not Found",
-  "status": 404,
-  "detail": "Order not found",
-  "errorCode": "not_found"
-}
-```
-
-Per-request properties land in the right place no matter which shape you choose — the
-library is never coupled to one envelope.
 
 ---
 
@@ -587,34 +948,13 @@ dotnet test
 
 ---
 
-## Why `Outcome<T>` instead of exceptions?
-
-- **Explicit contracts** — the failure is part of the method signature, not a side channel.
-- **No `try/catch` for control flow** — expected failures are values, not exceptions.
-- **Automatic HTTP mapping** — failures become correct status codes with one call.
-- **Consistent errors** — expected failures and unhandled exceptions share one envelope.
-- **Traceable responses** — opt-in `traceId` on every error envelope.
-
----
-
-## Roadmap
-
-Coming next (open to feedback):
-
-- Cancellation support (`Outcome<Task>` helpers).
-- Fluent result building (`outcome.OnSuccess(...).OnFailure(...)`).
-- Validation-first API (`Result<T, E>` style ergonomics).
-- Source-generated endpoint helpers for trimming-friendly AOT.
-
----
-
 ## Contributing
 
 Contributions are welcome! Open an issue or a pull request.
 
-- **Bug reports** — include the .NET version, package version, and a minimal repro.
-- **Feature requests** — explain the use case; API changes are discussed before coding.
-- **PRs** — keep the diff focused, add tests for new behavior, and ensure `dotnet build -warnaserror` and `dotnet test` pass.
+- **Bug reports**: include the .NET version, package version, and a minimal repro.
+- **Feature requests**: explain the use case; API changes are discussed before coding.
+- **PRs**: keep the diff focused, add tests for new behavior, and ensure `dotnet build -warnaserror` and `dotnet test` pass.
 
 ---
 

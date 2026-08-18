@@ -5,15 +5,15 @@ using NebulaSpace.Outcome.AspNetCore.Models;
 
 namespace NebulaSpace.Outcome.AspNetCore.Failures;
 
-/// <summary>HTTP 400 with field-level validation errors.</summary>
+/// <summary>HTTP 400 with field-level validation errors (RFC 9457: field → string[]).</summary>
 public sealed class ValidationFailure : Failure, IHttpFailure
 {
-    public ValidationFailure(string message, Dictionary<string, string> errors) : base(message, "validation")
+    public ValidationFailure(string message, IReadOnlyDictionary<string, string[]> errors) : base(message, "validation")
     {
         Errors = errors;
     }
 
-    public Dictionary<string, string> Errors { get; }
+    public IReadOnlyDictionary<string, string[]> Errors { get; }
 
     public FailureDetails ToDetails() => new(StatusCodes.Status400BadRequest, Message, Code, Errors);
 }
