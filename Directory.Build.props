@@ -8,7 +8,6 @@
 
         <!-- Shared NuGet package metadata -->
         <Authors>NebulaSpace</Authors>
-        <Version>0.3.0</Version>
         <Description>NebulaSpace Outcome — a result pattern library for .NET with ASP.NET Core integration.</Description>
         <PackageTags>result-pattern;outcome;aspnetcore;error-handling;ddd</PackageTags>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
