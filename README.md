@@ -6,6 +6,7 @@
 
 [![NuGet][outcome-shield]][outcome-nuget]
 [![NuGet][aspnetcore-shield]][aspnetcore-nuget]
+[![GitHub][github-shield]][github]
 [![MIT License][license-shield]][license]
 
 `Outcome<T>` · `Failure` · `IHttpResultFactory` · Success/Error envelopes · exception mapping
@@ -49,6 +50,7 @@
   - [Custom pagination](#custom-pagination)
 - [JSON serialization options](#json-serialization-options)
 - [Testing](#testing)
+- [Claude Code plugin](#claude-code-plugin)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -950,6 +952,47 @@ dotnet test
 
 ---
 
+## Claude Code plugin
+
+This repo ships a [Claude Code](https://claude.ai/code) plugin with skills that give
+Claude accurate, copy-pasteable guidance for using the library — no hallucinated API
+shapes.
+
+### Install
+
+```
+/plugin marketplace add nebulaspace-id/outcome-csharp
+/plugin install outcome-tools@outcome-csharp
+```
+
+The first command registers this repo as a plugin marketplace; the second installs the
+`outcome-tools` plugin into your local Claude Code config.
+
+### What's inside
+
+| Skill | Covers |
+| --- | --- |
+| `outcome-core` | `Outcome<T>`, `Failure`, `Unit`, matching, pattern matching, service method patterns |
+| `outcome-aspnetcore` | `AddOutcome`, `UseOutcomeExceptionHandler`, `IHttpResultFactory`, response envelopes, `IHttpFailure`, `MapFailure`, `MapException`, pagination (offset, cursor, custom), endpoint wiring, JSON serialization |
+
+Once installed, Claude automatically loads the relevant skill when you write code that
+uses the library — creating outcomes, configuring DI, building paginated endpoints, etc.
+
+### Team auto-config
+
+To pre-register the marketplace for your team (so every contributor only needs the
+install step), add this to `.claude/settings.json`:
+
+```json
+"extraKnownMarketplaces": {
+  "outcome-csharp": {
+    "source": { "source": "github", "repo": "nebulaspace-id/outcome-csharp" }
+  }
+}
+```
+
+---
+
 ## Contributing
 
 Contributions are welcome! Open an issue or a pull request.
@@ -968,5 +1011,7 @@ Contributions are welcome! Open an issue or a pull request.
 [outcome-nuget]: https://www.nuget.org/packages/NebulaSpace.Outcome
 [aspnetcore-shield]: https://img.shields.io/nuget/v/NebulaSpace.Outcome.AspNetCore?style=flat-square&logo=nuget&logoColor=white&label=NebulaSpace.Outcome.AspNetCore
 [aspnetcore-nuget]: https://www.nuget.org/packages/NebulaSpace.Outcome.AspNetCore
+[github-shield]: https://img.shields.io/badge/GitHub-repo-black?style=flat-square&logo=github&logoColor=white
+[github]: https://github.com/nebulaspace-id/outcome-csharp
 [license-shield]: https://img.shields.io/badge/license-MIT-green.svg?style=flat-square
 [license]: LICENSE

@@ -11,6 +11,9 @@
         <Description>NebulaSpace Outcome — a result pattern library for .NET with ASP.NET Core integration.</Description>
         <PackageTags>result-pattern;outcome;aspnetcore;error-handling;ddd</PackageTags>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+        <RepositoryUrl>https://github.com/nebulaspace-id/outcome-csharp</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageProjectUrl>https://github.com/nebulaspace-id/outcome-csharp</PackageProjectUrl>
 
         <!-- One shared readme + license, packed into every package -->
         <PackageReadmeFile>README.md</PackageReadmeFile>
