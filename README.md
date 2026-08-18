@@ -121,7 +121,8 @@ using NebulaSpace.Outcome.AspNetCore.Http;
 // Register once in Program.cs:
 builder.Services.AddOutcome(options =>
 {
-    options.Success.SetResponse<SuccessResponse>();
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
+    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
     options.Error.SetResponse<ErrorResponse>();
 });
 
@@ -297,9 +298,10 @@ A subclass of a registered failure type inherits its nearest ancestor's mapping.
 builder.Services.AddOutcome(options =>
 {
     // Success envelope: any open-generic type implementing ISuccessEnvelope<T>
-    options.Success.SetResponse(typeof(SuccessResponse<>));
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
+    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
 
-    // Error envelope: any type implementing IErrorEnvelope, AOT-safe, zero-reflection
+    // Error envelope: any type implementing IErrorEnvelope
     options.Error.SetResponse<ErrorResponse>();
 
     // Map application-defined failures to HTTP intent:
@@ -506,7 +508,7 @@ status from the failure's intent (`FailureDetails.StatusCode`):
   typed, not string keys in a runtime dictionary. Typos are caught at compile time.
 - **One body everywhere.** Expected failures, `MapFailure` results, and mapped
   exceptions all reduce to a `FailureDetails`, which the envelope turns into this one shape.
-- **AOT-safe, zero-reflection.** `SetResponse<T>()` dispatches through
+- **Zero-reflection for errors.** `SetResponse<T>()` dispatches through
   `IErrorEnvelope.From` via `static abstract`, with no `GetMethod`/`Invoke` at all.
 
 The library separates a failure's **intent** from the **shape** of the error body:
