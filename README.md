@@ -23,6 +23,7 @@
 - [Core types](#core-types)
 - [Failures](#failures)
 - [ASP.NET Core integration](#aspnet-core-integration)
+- [MVC controllers](#mvc-controllers)
 - [Response envelopes](#response-envelopes)
 - [Exception handling](#exception-handling)
 - [Pagination](#pagination)
@@ -314,6 +315,67 @@ For non-standard URIs, use the manual overload:
 ```csharp
 return result.ToResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
 ```
+
+---
+
+## MVC controllers
+
+The library supports MVC controllers through two patterns — both reuse the same
+`IHttpResultFactory`, envelopes, and failure mapping as Minimal APIs.
+
+### Pattern 1: `[OutcomeResult]` filter (zero ceremony)
+
+Return `Outcome<T>` directly from an action. The filter converts it to the correct HTTP
+response automatically:
+
+```csharp
+[ApiController, Route("products")]
+[OutcomeResult]                            // per-controller or global
+public class ProductsController : ControllerBase
+{
+    private readonly IProductService _service;
+
+    public ProductsController(IProductService service) => _service = service;
+
+    [HttpGet("{id:guid}")]
+    public Outcome<Product> Get(Guid id) => _service.GetProduct(id);   // 200 or 404
+
+    [HttpDelete("{id:guid}")]
+    public Outcome<Unit> Delete(Guid id) => _service.DeleteProduct(id); // 204 or 404
+}
+```
+
+### Pattern 2: explicit `ToActionResult` / `ToActionResultAsync`
+
+When you need a custom success response (201 with `Location`, pagination metadata, etc.):
+
+```csharp
+[HttpPost]
+public Task<IActionResult> Create([FromBody] CreateProductRequest request) =>
+    _service.CreateProduct(request)
+        .ToActionResultAsync(_http, product => _http.Created(product, p => p.Id));
+
+[HttpGet]
+public IActionResult List([FromQuery] OffsetQuery query)
+{
+    var result = _service.GetProducts(query);
+    return Outcome.Success(result.Items)
+        .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetInfo(query)));
+}
+```
+
+### Register
+
+```csharp
+builder.Services.AddControllers();
+builder.Services.AddOutcomeMvcFilter();   // registers [OutcomeResult] as a global filter
+
+var app = builder.Build();
+app.MapControllers();
+```
+
+> The full controller sample lives alongside the Minimal API sample in
+> [`samples/NebulaSpace.Outcome.Samples.WebApi/Features/Products/ProductsController.cs`](samples/NebulaSpace.Outcome.Samples.WebApi/Features/Products/ProductsController.cs).
 
 ---
 

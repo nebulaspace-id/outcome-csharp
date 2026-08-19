@@ -189,6 +189,71 @@ group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFact
 
 ---
 
+## MVC Controllers
+
+Two patterns for MVC controllers — both reuse the same `IHttpResultFactory`, envelopes, and failure mapping.
+
+### Pattern 1: `[OutcomeResult]` filter (zero ceremony)
+
+Return `Outcome<T>` directly from an action. The filter converts it to the correct HTTP response:
+
+```csharp
+[ApiController, Route("products")]
+[OutcomeResult]                            // per-controller or global
+public class ProductsController : ControllerBase
+{
+    private readonly IProductService _service;
+    public ProductsController(IProductService service) => _service = service;
+
+    [HttpGet("{id:guid}")]
+    public Outcome<Product> Get(Guid id) => _service.GetProduct(id);   // 200 or 404
+
+    [HttpDelete("{id:guid}")]
+    public Outcome<Unit> Delete(Guid id) => _service.DeleteProduct(id); // 204 or 404
+}
+```
+
+### Pattern 2: explicit `ToActionResult` / `ToActionResultAsync`
+
+For custom success responses (201 with Location, pagination metadata, etc.):
+
+```csharp
+[HttpPost]
+public Task<IActionResult> Create([FromBody] CreateProductRequest request) =>
+    _service.CreateProduct(request)
+        .ToActionResultAsync(_http, product => _http.Created(product, p => p.Id));
+
+[HttpGet]
+public IActionResult List([FromQuery] OffsetQuery query)
+{
+    var result = _service.GetProducts(query);
+    return Outcome.Success(result.Items)
+        .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetInfo(query)));
+}
+```
+
+### MVC Extension Methods
+
+| Method | Use when |
+| --- | --- |
+| `outcome.ToActionResult(factory)` | Sync, auto-maps success/failure |
+| `outcome.ToActionResult(factory, onSuccess)` | Sync with custom success logic |
+| `await outcomeTask.ToActionResultAsync(factory)` | Async, auto-maps |
+| `await outcomeTask.ToActionResultAsync(factory, onSuccess)` | Async with custom success |
+| `result.ToActionResult()` | Wrap an `IResult` as `IActionResult` |
+
+### Register
+
+```csharp
+builder.Services.AddControllers();
+builder.Services.AddOutcomeMvcFilter();   // registers [OutcomeResult] as global filter
+
+var app = builder.Build();
+app.MapControllers();
+```
+
+---
+
 ## Response Envelopes
 
 ### Error Envelope (`IErrorEnvelope`)
