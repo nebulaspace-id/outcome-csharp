@@ -8,13 +8,13 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 public class OutcomeHttpExtensionsTests
 {
     [Fact]
-    public async Task ToHttpResult_OnSuccess_InvokesOnSuccess()
+    public async Task ToResult_OnSuccess_InvokesOnSuccess()
     {
         var factory = ResultTestHelper.CreateFactory();
         Outcome<string> outcome = Outcome.Success("hi");
 
         var capture = await ResultTestHelper.ExecuteAsync(
-            outcome.ToHttpResult(factory, value => factory.Ok(new { value })));
+            outcome.ToResult(factory, value => factory.Ok(new { value })));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
@@ -22,13 +22,13 @@ public class OutcomeHttpExtensionsTests
     }
 
     [Fact]
-    public async Task ToHttpResult_OnFailure_ReturnsErrorResponse()
+    public async Task ToResult_OnFailure_ReturnsErrorResponse()
     {
         var factory = ResultTestHelper.CreateFactory();
         Outcome<Order> outcome = Outcome.Fail(new NotFoundFailure("not here"));
 
         var capture = await ResultTestHelper.ExecuteAsync(
-            outcome.ToHttpResult(factory, order => factory.Ok(order)));
+            outcome.ToResult(factory, order => factory.Ok(order)));
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
@@ -37,14 +37,14 @@ public class OutcomeHttpExtensionsTests
     }
 
     [Fact]
-    public async Task ToHttpResult_OnFailure_DoesNotCallOnSuccess()
+    public async Task ToResult_OnFailure_DoesNotCallOnSuccess()
     {
         var factory = ResultTestHelper.CreateFactory();
         Outcome<int> outcome = Outcome.Fail(new BadRequestFailure("bad"));
         var onSuccessCalled = false;
 
         await ResultTestHelper.ExecuteAsync(
-            outcome.ToHttpResult(factory, _ =>
+            outcome.ToResult(factory, _ =>
             {
                 onSuccessCalled = true;
                 return factory.Ok<object>(new object());
@@ -64,28 +64,28 @@ public class OutcomeHttpExtensionsTests
     }
 
     [Fact]
-    public async Task ToHttpResult_SuccessWithCreated_ProducesLocation()
+    public async Task ToResult_SuccessWithCreated_ProducesLocation()
     {
         var factory = ResultTestHelper.CreateFactory();
         Outcome<Order> outcome = Outcome.Success(new Order(1));
         var capture = await ResultTestHelper.ExecuteAsync(
-            outcome.ToHttpResult(factory, order => factory.Created(order, o => o.Id)),
+            outcome.ToResult(factory, order => factory.Created(order, o => o.Id)),
             ctx => ctx.Request.Path = "/orders");
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
         Assert.Equal("/orders/1", capture.Location);
     }
 
-    // --- ToHttpResultAsync ---
+    // --- ToResultAsync ---
 
     [Fact]
-    public async Task ToHttpResultAsync_OnSuccess_InvokesOnSuccess()
+    public async Task ToResultAsync_OnSuccess_InvokesOnSuccess()
     {
         var factory = ResultTestHelper.CreateFactory();
         Task<Outcome<string>> outcomeTask = Task.FromResult(Outcome.Success("hi"));
 
         var capture = await ResultTestHelper.ExecuteAsync(
-            await outcomeTask.ToHttpResultAsync(factory, value => factory.Ok(new { value })));
+            await outcomeTask.ToResultAsync(factory, value => factory.Ok(new { value })));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
@@ -93,13 +93,13 @@ public class OutcomeHttpExtensionsTests
     }
 
     [Fact]
-    public async Task ToHttpResultAsync_OnFailure_ReturnsErrorResponse()
+    public async Task ToResultAsync_OnFailure_ReturnsErrorResponse()
     {
         var factory = ResultTestHelper.CreateFactory();
         Task<Outcome<Order>> outcomeTask = Task.FromResult<Outcome<Order>>(Outcome.Fail(new NotFoundFailure("nope")));
 
         var capture = await ResultTestHelper.ExecuteAsync(
-            await outcomeTask.ToHttpResultAsync(factory, order => factory.Ok(order)));
+            await outcomeTask.ToResultAsync(factory, order => factory.Ok(order)));
 
         Assert.Equal(StatusCodes.Status404NotFound, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
@@ -107,13 +107,13 @@ public class OutcomeHttpExtensionsTests
     }
 
     [Fact]
-    public async Task ToHttpResultAsync_WithAsyncOnSuccess_IsAwaited()
+    public async Task ToResultAsync_WithAsyncOnSuccess_IsAwaited()
     {
         var factory = ResultTestHelper.CreateFactory();
         Task<Outcome<string>> outcomeTask = Task.FromResult(Outcome.Success("hi"));
 
         var capture = await ResultTestHelper.ExecuteAsync(
-            await outcomeTask.ToHttpResultAsync(factory, async value =>
+            await outcomeTask.ToResultAsync(factory, async value =>
             {
                 await Task.Yield();
                 return factory.Ok(new { value });

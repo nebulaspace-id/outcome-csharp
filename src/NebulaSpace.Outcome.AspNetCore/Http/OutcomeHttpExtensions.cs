@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using NebulaSpace.Outcome;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
@@ -32,10 +33,10 @@ public static class OutcomeHttpExtensions
     /// <param name="onSuccess">Builds the success <see cref="IResult"/> from the payload.</param>
     /// <example>
     /// <code>
-    /// IResult result = outcome.ToHttpResult(http, value => http.Ok(new { value }));
+    /// IResult result = outcome.ToResult(http, value => http.Ok(new { value }));
     /// </code>
     /// </example>
-    public static IResult ToHttpResult<T>(this Outcome<T> outcome, IHttpResultFactory factory, Func<T, IResult> onSuccess)
+    public static IResult ToResult<T>(this Outcome<T> outcome, IHttpResultFactory factory, Func<T, IResult> onSuccess)
         => outcome.Match(onSuccess, failure => failure.ToErrorResponse(factory));
 
     /// <summary>
@@ -48,10 +49,10 @@ public static class OutcomeHttpExtensions
     /// <param name="onSuccess">Builds the success <see cref="IResult"/> from the payload.</param>
     /// <example>
     /// <code>
-    /// IResult result = await outcomeTask.ToHttpResultAsync(http, value => http.Ok(value));
+    /// IResult result = await outcomeTask.ToResultAsync(http, value => http.Ok(value));
     /// </code>
     /// </example>
-    public static async Task<IResult> ToHttpResultAsync<T>(
+    public static async Task<IResult> ToResultAsync<T>(
         this Task<Outcome<T>> outcomeTask,
         IHttpResultFactory factory,
         Func<T, IResult> onSuccess)
@@ -70,11 +71,11 @@ public static class OutcomeHttpExtensions
     /// <param name="onSuccess">An async function that builds the success <see cref="IResult"/>.</param>
     /// <example>
     /// <code>
-    /// IResult result = await outcomeTask.ToHttpResultAsync(
+    /// IResult result = await outcomeTask.ToResultAsync(
     ///     http, async order => await store.Save(order, http));
     /// </code>
     /// </example>
-    public static async Task<IResult> ToHttpResultAsync<T>(
+    public static async Task<IResult> ToResultAsync<T>(
         this Task<Outcome<T>> outcomeTask,
         IHttpResultFactory factory,
         Func<T, Task<IResult>> onSuccess)
@@ -83,5 +84,69 @@ public static class OutcomeHttpExtensions
         return await outcome.Match(
             onSuccess: v => onSuccess(v),
             onFailure: f => Task.FromResult(f.ToErrorResponse(factory)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //  MVC bridge — same semantics, returns IActionResult for controller use
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts an <see cref="Outcome{T}"/> to an <see cref="IActionResult"/>:
+    /// <paramref name="onSuccess"/> builds the success result, and a failure becomes
+    /// its error response automatically. The result flows through MVC's filter pipeline.
+    /// </summary>
+    /// <param name="outcome">The outcome to convert.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <param name="onSuccess">Builds the success <see cref="IResult"/> from the payload.</param>
+    /// <example>
+    /// <code>
+    /// IActionResult result = outcome.ToActionResult(http, value => http.Ok(value));
+    /// </code>
+    /// </example>
+    public static IActionResult ToActionResult<T>(this Outcome<T> outcome, IHttpResultFactory factory, Func<T, IResult> onSuccess)
+        => new OutcomeActionResult(outcome.ToResult(factory, onSuccess));
+
+    /// <summary>
+    /// Awaits a <see cref="Task{TResult}"/> of an <see cref="Outcome{T}"/> and converts
+    /// it to an <see cref="IActionResult"/>. Use with async services that return
+    /// <c>Task&lt;Outcome&lt;T&gt;&gt;</c>.
+    /// </summary>
+    /// <param name="outcomeTask">The pending outcome.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <param name="onSuccess">Builds the success <see cref="IResult"/> from the payload.</param>
+    /// <example>
+    /// <code>
+    /// IActionResult result = await outcomeTask.ToActionResultAsync(http, value => http.Ok(value));
+    /// </code>
+    /// </example>
+    public static async Task<IActionResult> ToActionResultAsync<T>(
+        this Task<Outcome<T>> outcomeTask,
+        IHttpResultFactory factory,
+        Func<T, IResult> onSuccess)
+    {
+        var inner = await outcomeTask.ToResultAsync(factory, onSuccess);
+        return new OutcomeActionResult(inner);
+    }
+
+    /// <summary>
+    /// Awaits a <see cref="Task{TResult}"/> of an <see cref="Outcome{T}"/> and converts
+    /// it to an <see cref="IActionResult"/>, with an <b>asynchronous</b> success handler.
+    /// </summary>
+    /// <param name="outcomeTask">The pending outcome.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <param name="onSuccess">An async function that builds the success <see cref="IResult"/>.</param>
+    /// <example>
+    /// <code>
+    /// IActionResult result = await outcomeTask.ToActionResultAsync(
+    ///     http, async order => await store.Save(order, http));
+    /// </code>
+    /// </example>
+    public static async Task<IActionResult> ToActionResultAsync<T>(
+        this Task<Outcome<T>> outcomeTask,
+        IHttpResultFactory factory,
+        Func<T, Task<IResult>> onSuccess)
+    {
+        var inner = await outcomeTask.ToResultAsync(factory, onSuccess);
+        return new OutcomeActionResult(inner);
     }
 }

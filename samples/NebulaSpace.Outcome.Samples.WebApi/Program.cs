@@ -30,6 +30,13 @@ builder.Services.Configure<JsonOptions>(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
+// ── Controllers (MVC) ─────────────────────────────────────────────────────
+
+builder.Services.AddControllers()
+    .AddApplicationPart(typeof(ProductsController).Assembly);
+
+builder.Services.AddOutcomeMvcFilter();
+
 // ── Swagger ───────────────────────────────────────────────────────────────
 
 builder.Services.AddEndpointsApiExplorer();
@@ -136,6 +143,7 @@ app.UseSwaggerUI();
 // ── Endpoints ─────────────────────────────────────────────────────────────
 
 app.MapProductEndpoints();
+app.MapControllers();
 app.MapOpenApi();
 
 app.Run();

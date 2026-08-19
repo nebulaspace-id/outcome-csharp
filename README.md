@@ -108,7 +108,7 @@ builder.Services.AddOutcome(options =>
 // Then in your endpoint:
 app.MapGroup("/greet")
    .MapGet("/{name}", (string name, IGreetingService service, IHttpResultFactory http) =>
-       service.Greet(name).ToHttpResult(http, greeting => http.Ok(new { greeting })));
+       service.Greet(name).ToResult(http, greeting => http.Ok(new { greeting })));
 ```
 
 Success invokes your handler; failure becomes the correct HTTP error automatically.
@@ -277,13 +277,13 @@ Inject `IHttpResultFactory` into your endpoint or service:
 
 ```csharp
 // Sync
-result.ToHttpResult(http, order => http.Created(order, o => o.Id));
+result.ToResult(http, order => http.Created(order, o => o.Id));
 
 // Async
-await outcomeTask.ToHttpResultAsync(http, order => http.Created(order, o => o.Id));
+await outcomeTask.ToResultAsync(http, order => http.Created(order, o => o.Id));
 
 // Async success handler
-await outcomeTask.ToHttpResultAsync(http, async order => await store.Save(order, http));
+await outcomeTask.ToResultAsync(http, async order => await store.Save(order, http));
 
 // Failure-only
 failure.ToErrorResponse(http);
@@ -304,7 +304,7 @@ failure.ToErrorResponse(http);
 `http.Created` builds the `Location` header from the request path automatically:
 
 ```csharp
-return result.ToHttpResult(http, order => http.Created(order, o => o.Id));
+return result.ToResult(http, order => http.Created(order, o => o.Id));
 // POST /orders       -> Location: /orders/{id}
 // POST /admin/orders -> Location: /admin/orders/{id}
 ```
@@ -312,7 +312,7 @@ return result.ToHttpResult(http, order => http.Created(order, o => o.Id));
 For non-standard URIs, use the manual overload:
 
 ```csharp
-return result.ToHttpResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
+return result.ToResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
 ```
 
 ---
@@ -530,7 +530,7 @@ public OffsetResult<Order> GetOrders(OffsetQuery query)
 
 // Endpoint
 group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrders(query)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
         http.Ok(page.Items, page.ToOffsetInfo(query))))
     .Produces<SuccessResponse<Order[], OffsetInfo>>();
 ```
@@ -562,7 +562,7 @@ public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
 
 // Endpoint
 group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToResult(http, page =>
         http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
     .Produces<SuccessResponse<Order[], CursorInfo>>();
 ```
@@ -595,7 +595,7 @@ public sealed class KeysetInfo : IPaginationDetails
 
 // Endpoint — same pattern as offset/cursor
 group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProductsKeyset(query)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
         http.Ok(page.Items, page.ToKeysetInfo())))
     .Produces<SuccessResponse<Product[], KeysetInfo>>();
 ```

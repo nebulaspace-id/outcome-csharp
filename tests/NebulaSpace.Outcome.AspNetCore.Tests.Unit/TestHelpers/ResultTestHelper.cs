@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -8,9 +9,9 @@ using NebulaSpace.Outcome.AspNetCore.Options;
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit.TestHelpers;
 
 /// <summary>
-/// Helpers for executing <see cref="IResult"/> objects against an in-memory
-/// <see cref="DefaultHttpContext"/>. No static state is shared between tests,
-/// so test collections may run in parallel.
+/// Helpers for executing <see cref="IResult"/> and <see cref="IActionResult"/> objects
+/// against an in-memory <see cref="DefaultHttpContext"/>. No static state is shared
+/// between tests, so test collections may run in parallel.
 /// </summary>
 internal static class ResultTestHelper
 {
@@ -43,6 +44,42 @@ internal static class ResultTestHelper
         configure?.Invoke(context);
 
         await result.ExecuteAsync(context);
+
+        context.Response.Body.Position = 0;
+        string body;
+        using (var reader = new StreamReader(context.Response.Body))
+        {
+            body = await reader.ReadToEndAsync();
+        }
+
+        return new ResultCapture
+        {
+            StatusCode = context.Response.StatusCode,
+            Body = body,
+            Location = context.Response.Headers.Location.ToString(),
+        };
+    }
+
+    /// <summary>
+    /// Executes an <see cref="IActionResult"/> through an MVC <see cref="ActionContext"/>
+    /// and captures status code, body, and Location header.
+    /// </summary>
+    public static async Task<ResultCapture> ExecuteActionResultAsync(
+        IActionResult actionResult,
+        Action<DefaultHttpContext>? configure = null)
+    {
+        var context = new DefaultHttpContext { RequestServices = RequestServices };
+        context.Response.Body = new MemoryStream();
+        configure?.Invoke(context);
+
+        var actionContext = new ActionContext
+        {
+            HttpContext = context,
+            RouteData = new Microsoft.AspNetCore.Routing.RouteData(),
+            ActionDescriptor = new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor(),
+        };
+
+        await actionResult.ExecuteResultAsync(actionContext);
 
         context.Response.Body.Position = 0;
         string body;

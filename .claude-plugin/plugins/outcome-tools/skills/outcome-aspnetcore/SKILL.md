@@ -2,7 +2,7 @@
 name: outcome-aspnetcore
 description: >
   Use when configuring or using NebulaSpace.Outcome.AspNetCore:
-  AddOutcome, UseOutcomeExceptionHandler, IHttpResultFactory, ToHttpResult,
+  AddOutcome, UseOutcomeExceptionHandler, IHttpResultFactory, ToResult,
   response envelopes, failure/exception mapping, pagination, endpoint wiring,
   or JSON serialization.
 license: MIT
@@ -108,16 +108,16 @@ Singleton lifetime, inject into endpoints or services:
 
 ```csharp
 group.MapGet("/{id}", (Guid id, IOrderService service, IHttpResultFactory http) =>
-    service.GetOrder(id).ToHttpResult(http, order => http.Ok(order)));
+    service.GetOrder(id).ToResult(http, order => http.Ok(order)));
 ```
 
 ## Extension Methods
 
 | Method | Use when |
 | --- | --- |
-| `outcome.ToHttpResult(http, onSuccess)` | Sync service returning `Outcome<T>` |
-| `await outcomeTask.ToHttpResultAsync(http, onSuccess)` | Async service returning `Task<Outcome<T>>` |
-| `await outcomeTask.ToHttpResultAsync(http, async onSuccess)` | Async service with async success handler |
+| `outcome.ToResult(http, onSuccess)` | Sync service returning `Outcome<T>` |
+| `await outcomeTask.ToResultAsync(http, onSuccess)` | Async service returning `Task<Outcome<T>>` |
+| `await outcomeTask.ToResultAsync(http, async onSuccess)` | Async service with async success handler |
 | `failure.ToErrorResponse(http)` | You already have the `Failure` object |
 
 ## `IHttpResultFactory` Helpers
@@ -137,10 +137,10 @@ group.MapGet("/{id}", (Guid id, IOrderService service, IHttpResultFactory http) 
 
 ```csharp
 // Automatic Location: POST /orders -> Location: /orders/{id}
-return result.ToHttpResult(http, order => http.Created(order, o => o.Id));
+return result.ToResult(http, order => http.Created(order, o => o.Id));
 
 // Manual Location: for non-standard URIs
-return result.ToHttpResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
+return result.ToResult(http, order => http.Created(order, $"/orders/{order.Id}/items/42"));
 ```
 
 ---
@@ -170,19 +170,19 @@ var group = app.MapGroup("/products");
 
 // GET with 404
 group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
-    service.GetProduct(id).ToHttpResult(http, product => http.Ok(product)))
+    service.GetProduct(id).ToResult(http, product => http.Ok(product)))
     .Produces<SuccessResponse<Product>>()
     .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 
 // POST with 201
 group.MapPost("/", (CreateProductRequest req, IProductService service, IHttpResultFactory http) =>
-    service.CreateProduct(req).ToHttpResultAsync(http, product => http.Created(product, p => p.Id)))
+    service.CreateProduct(req).ToResultAsync(http, product => http.Created(product, p => p.Id)))
     .Produces<SuccessResponse<Product>>(StatusCodes.Status201Created)
     .Produces<ErrorResponse>(StatusCodes.Status400BadRequest);
 
 // DELETE with 204
 group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
-    service.DeleteProduct(id).ToHttpResult(http, _ => http.NoContent()))
+    service.DeleteProduct(id).ToResult(http, _ => http.NoContent()))
     .Produces(StatusCodes.Status204NoContent)
     .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 ```
@@ -333,7 +333,7 @@ public OffsetResult<Order> GetOrders(OffsetQuery query)
 
 // Endpoint
 group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrders(query)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
         http.Ok(page.Items, page.ToOffsetInfo(query))))
     .Produces<SuccessResponse<Order[], OffsetInfo>>();
 ```
@@ -359,7 +359,7 @@ public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
 
 // Endpoint
 group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToResult(http, page =>
         http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
     .Produces<SuccessResponse<Order[], CursorInfo>>();
 ```
@@ -390,7 +390,7 @@ public sealed class KeysetInfo : IPaginationDetails
 
 // Endpoint
 group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProductsKeyset(query)).ToHttpResult(http, page =>
+    Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
         http.Ok(page.Items, page.ToKeysetInfo())))
     .Produces<SuccessResponse<Product[], KeysetInfo>>();
 ```
