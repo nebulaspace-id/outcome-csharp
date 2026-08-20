@@ -101,8 +101,9 @@ using NebulaSpace.Outcome.AspNetCore.Http;
 // Register once in Program.cs:
 builder.Services.AddOutcome(options =>
 {
-    options.Success.SetResponse(typeof(SuccessResponse<>));
-    options.Success.SetResponse(typeof(SuccessResponse<,>));
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
+    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
+    options.Success.SetResponse(typeof(SuccessResponse));      // no-payload (http.Ok())
     options.Error.SetResponse<ErrorResponse>();
 });
 
@@ -262,6 +263,7 @@ builder.Services.AddOutcome(options =>
 {
     options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
     options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
+    options.Success.SetResponse(typeof(SuccessResponse));      // no-payload (http.Ok())
     options.Error.SetResponse<ErrorResponse>();
 
     options.Error.MapFailure<QuotaExceededFailure>(f =>
@@ -294,6 +296,7 @@ failure.ToErrorResponse(http);
 
 | Helper | Behavior |
 | --- | --- |
+| `http.Ok()` | 200 with no payload (status-only envelope) |
 | `http.Ok(data)` | 200, raw or wrapped per `Success.Enabled` |
 | `http.Ok(data, pagination)` | 200 with pagination metadata |
 | `http.Created(data, idSelector)` | 201 with `Location` derived from the request path |
@@ -443,6 +446,33 @@ options.Success.SetResponse(typeof(SuccessResponse<,>));  // paginated
 ```
 
 When `Success.Enabled` is `false`, successes are returned raw with no wrapper.
+
+### No-payload envelope
+
+`http.Ok()` (no arguments) returns a status-only envelope with no `data` field. The
+non-generic envelope type needs only a `From(HttpContext, int)` method — no
+`ISuccessEnvelope<T>` contract required:
+
+```csharp
+public sealed class SuccessResponse
+{
+    public int StatusCode { get; init; }
+
+    public static object From(HttpContext httpContext, int statusCode) =>
+        new SuccessResponse { StatusCode = statusCode };
+}
+```
+
+```csharp
+options.Success.SetResponse(typeof(SuccessResponse));   // non-generic, no payload
+```
+
+```csharp
+group.MapGet("/ping", (IHttpResultFactory http) => http.Ok())
+    .Produces<SuccessResponse>();                       // Swagger: { statusCode: 200 }
+```
+
+Without registration, the default is `DefaultSuccessResponse` — `{ "statusCode": 200 }`.
 
 > **AOT warning:** `SetResponse(typeof(...))` breaks NativeAOT. Use the delegate
 > overload `SetResponse(Func<...>)` instead. The trade-off is Swagger shows `Data: object`.
