@@ -6,6 +6,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageSupportedTargetFramework Include="net7.0" />
+        <PackageSupportedTargetFramework Include="net8.0" />
+        <PackageSupportedTargetFramework Include="net9.0" />
+        <PackageSupportedTargetFramework Include="net10.0" />
+    </ItemGroup>
+
+    <ItemGroup>
       <FrameworkReference Include="Microsoft.AspNetCore.App" />
       <ProjectReference Include="..\NebulaSpace.Outcome\NebulaSpace.Outcome.csproj" />
     </ItemGroup>
