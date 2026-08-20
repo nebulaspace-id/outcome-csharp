@@ -29,6 +29,12 @@ public class ProductsController : ControllerBase
         _http = http;
     }
 
+    // ── Ping ─────────────────────────────────────────────────────────────────
+    // 200 with no payload, status-only envelope.
+
+    [HttpGet("ping")]
+    public IActionResult Ping() => _http.Ok().ToActionResult();
+
     // ── Create ───────────────────────────────────────────────────────────────
     // Async service, validation (400) + uniqueness (409) handled by the library.
     // Success → 201 with a derived Location header.

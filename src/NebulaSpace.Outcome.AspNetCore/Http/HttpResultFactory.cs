@@ -25,6 +25,10 @@ public sealed class HttpResultFactory : IHttpResultFactory
     }
 
     /// <inheritdoc />
+    public IResult Ok() =>
+        new SuccessEnvelopeResult(StatusCodes.Status200OK, _options);
+
+    /// <inheritdoc />
     public IResult Ok<T>(T? data = default) =>
         SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 

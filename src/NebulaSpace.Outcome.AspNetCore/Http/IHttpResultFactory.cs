@@ -18,6 +18,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// </summary>
 public interface IHttpResultFactory
 {
+    /// <summary>200 OK with no payload.</summary>
+    IResult Ok();
+
     /// <summary>
     /// 200 OK with a payload, wrapped in the configured success envelope per
     /// <c>options.Success.Enabled</c>.

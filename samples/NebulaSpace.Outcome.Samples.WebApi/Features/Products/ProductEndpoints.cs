@@ -16,6 +16,10 @@ public static class ProductEndpoints
     {
         var group = app.MapGroup("/products");
 
+        // Ping — 200 with no payload, status-only envelope.
+        group.MapGet("/ping", (IHttpResultFactory http) => http.Ok())
+            .Produces<SuccessResponse>();
+
         // Create — async service, validation (400) + uniqueness (409) handled by the
         // library. Success → 201 with a derived Location header.
         group.MapPost("/", (CreateProductRequest request, IProductService service, IHttpResultFactory http) =>
