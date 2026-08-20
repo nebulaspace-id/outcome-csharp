@@ -17,11 +17,16 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 /// <list type="number">
 /// <item>
 /// <see cref="SetResponse(Func{object?, IPaginationDetails?, HttpContext, int, object})"/> —
-///   delegate overload, stores the factory as‑is.
+///   delegate overload for generic envelopes, stores the factory as‑is.
 /// </item>
 /// <item>
-/// <see cref="SetResponse(Type)"/> — open‑generic path for typed Swagger. Uses
-///   <c>MakeGenericType</c> + cached <c>MethodInfo.Invoke</c> at runtime.
+/// <see cref="SetResponse(Func{HttpContext, int, object})"/> —
+///   delegate overload for non‑generic (no‑payload) envelopes.
+/// </item>
+/// <item>
+/// <see cref="SetResponse(Type)"/> — type‑based path for typed Swagger. Pass an open‑generic
+///   type for payload envelopes (<c>typeof(SuccessResponse&lt;&gt;)</c>), or a non‑generic type
+///   for no‑payload envelopes (<c>typeof(SuccessResponse)</c>).
 /// </item>
 /// </list>
 /// </para>
@@ -55,6 +60,15 @@ public sealed class SuccessOptions
     internal Func<object?, IPaginationDetails?, HttpContext, int, object>? PaginationFactory { get; private set; }
 
     /// <summary>
+    /// Builds the concrete envelope instance for responses with no payload
+    /// (<c>http.Ok()</c> with no arguments). When <c>null</c>, the library uses
+    /// <see cref="DefaultSuccessResponse"/> — a status-code-only envelope.
+    /// Set via <see cref="SetResponse(Func{HttpContext, int, object})"/> or
+    /// <see cref="SetResponse(Type)"/> with a non-generic type.
+    /// </summary>
+    internal Func<HttpContext, int, object>? EmptyFactory { get; private set; }
+
+    /// <summary>
     /// Stores the factory delegate as‑is — every request is a plain delegate call, zero
     /// reflection. Useful when the envelope shape is built inline or the constructor needs
     /// extra wiring.
@@ -75,10 +89,32 @@ public sealed class SuccessOptions
         Factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
 
-    // ── Open-generic path (Swagger fidelity) ───────────────────────────
+    /// <summary>
+    /// Sets the success envelope for responses with no payload (<c>http.Ok()</c> with no
+    /// arguments). The delegate receives the HTTP context and status code.
+    /// </summary>
+    /// <param name="factory">A delegate that builds the response body.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="factory"/> is <c>null</c>.</exception>
+    /// <example>
+    /// <code>
+    /// options.Success.SetResponse((http, statusCode) =>
+    ///     new SuccessResponse { StatusCode = statusCode });
+    /// </code>
+    /// </example>
+    public void SetResponse(Func<HttpContext, int, object> factory)
+    {
+        EmptyFactory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
+    // ── Open-generic / non-generic path (Swagger fidelity) ─────────────
 
     /// <summary>
-    /// Sets the success envelope to an <b>open generic</b> type. When the type has
+    /// Sets the success envelope by <see cref="Type"/>. Pass an <b>open generic</b> for
+    /// payload envelopes, or a <b>non-generic</b> type for no-payload envelopes
+    /// (<c>http.Ok()</c> with no arguments).
+    ///
+    /// <para>
+    /// <b>Open generic</b> — when the type has
     /// <b>one</b> type parameter (e.g. <c>typeof(ApiSuccess&lt;&gt;)</c>), the library
     /// closes it with the payload type per request so Swagger sees
     /// <c>Data: Order</c> rather than <c>Data: object</c>.
@@ -89,6 +125,13 @@ public sealed class SuccessOptions
     /// with the concrete pagination type — <see cref="OffsetInfo"/> or
     /// <see cref="CursorInfo"/> — so System.Text.Json and Swagger see the
     /// full pagination shape, not just the <see cref="IPaginationDetails"/> interface members.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Non-generic</b> — pass a non-generic type for no-payload responses
+    /// (<c>http.Ok()</c> with no arguments). The type must have a
+    /// <c>public static From(HttpContext, int)</c> method. No
+    /// <see cref="ISuccessEnvelope{T}"/> contract is required.
     /// </para>
     ///
     /// <para>
@@ -109,13 +152,14 @@ public sealed class SuccessOptions
     /// </para>
     /// </summary>
     /// <param name="envelopeType">
-    /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>.
-    /// 1‑param for non‑paginated (<c>typeof(ApiSuccess&lt;&gt;)</c>),
-    /// 2‑param for paginated (<c>typeof(SuccessResponse&lt;,&gt;)</c>).
+    /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>
+    /// (1‑param for non‑paginated, 2‑param for paginated), <b>or</b> a non‑generic type
+    /// for no‑payload responses.
     /// </param>
     /// <exception cref="InvalidOperationException">
-    /// The type does not implement <see cref="ISuccessEnvelope{T}"/>, or its
-    /// <c>From</c> method is missing or inaccessible.
+    /// The type is generic but does not implement <see cref="ISuccessEnvelope{T}"/>,
+    /// or is non‑generic and lacks a <c>From(HttpContext, int)</c> method,
+    /// or the <c>From</c> method is missing or inaccessible.
     /// </exception>
     /// <example>
     /// <code>
@@ -125,10 +169,26 @@ public sealed class SuccessOptions
     /// // 2‑param open generic: TData + TPage, closed per request
     /// // Pagination is typed as OffsetInfo or CursorInfo — full shape in STJ/Swagger
     /// options.Success.SetResponse(typeof(SuccessResponse&lt;,&gt;));
+    ///
+    /// // Non‑generic: for http.Ok() with no arguments
+    /// options.Success.SetResponse(typeof(SuccessResponse));
     /// </code>
     /// </example>
     public void SetResponse(Type envelopeType)
     {
+        // Non-generic type → empty envelope (no payload, e.g. http.Ok() with no args).
+        if (!envelopeType.IsGenericTypeDefinition)
+        {
+            var fromMethod = envelopeType.GetMethod("From", BindingFlags.Public | BindingFlags.Static)
+                ?? throw new InvalidOperationException(
+                    $"Success.SetResponse: '{envelopeType.FullName}' must have a " +
+                    $"public static 'From(HttpContext httpContext, int statusCode)' method.");
+
+            EmptyFactory = (http, statusCode) =>
+                fromMethod.Invoke(null, new object[] { http, statusCode })!;
+            return;
+        }
+
         var contract = FindContract(envelopeType)
             ?? throw new InvalidOperationException(
                 $"Success.SetResponse requires the envelope to implement " +

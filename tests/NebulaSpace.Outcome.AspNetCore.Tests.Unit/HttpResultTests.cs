@@ -22,6 +22,32 @@ public class HttpResultTests
     // --- Ok ---
 
     [Fact]
+    public async Task Ok_NoArgs_ReturnsDefaultSuccessResponse()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+
+        var capture = await Execute(factory, factory.Ok());
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.Equal(200, json.GetProperty("statusCode").GetInt32());
+        Assert.False(json.TryGetProperty("data", out _));
+    }
+
+    [Fact]
+    public async Task Ok_NoArgs_WithCustomEnvelope_UsesCustomEnvelope()
+    {
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<>)));
+
+        var capture = await Execute(factory, factory.Ok());
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.Equal(200, json.GetProperty("statusCode").GetInt32());
+    }
+
+    [Fact]
     public async Task Ok_WithEnvelope_WrapsDataInSuccessResponse()
     {
         var factory = ResultTestHelper.CreateFactory();

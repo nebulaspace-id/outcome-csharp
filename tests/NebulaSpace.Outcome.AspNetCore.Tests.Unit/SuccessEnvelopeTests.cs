@@ -145,7 +145,7 @@ public class SuccessEnvelopeTests
         var options = new OutcomeOptions();
 
         var ex = Assert.Throws<InvalidOperationException>(() => options.Success.SetResponse(typeof(NoFromEnvelope)));
-        Assert.Contains("ISuccessEnvelope", ex.Message);
+        Assert.Contains("From", ex.Message);
     }
 
     [Fact]

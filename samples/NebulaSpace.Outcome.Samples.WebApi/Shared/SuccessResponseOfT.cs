@@ -4,6 +4,22 @@ using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
+/// <summary>
+/// Non-generic success envelope for responses with no payload.
+/// Serializes as <c>{"statusCode": 200}</c> — no <c>data</c> or <c>pagination</c> field.
+/// Used with <c>.Produces&lt;SuccessResponse&gt;()</c> for <c>http.Ok()</c> (no args).
+/// Register with <c>options.Success.SetResponse(typeof(SuccessResponse))</c>.
+/// </summary>
+public sealed class SuccessResponse
+{
+    /// <summary>HTTP status the response used.</summary>
+    public int StatusCode { get; init; }
+
+    /// <summary>Builds the per-request body (no payload).</summary>
+    public static object From(HttpContext httpContext, int statusCode) =>
+        new SuccessResponse { StatusCode = statusCode };
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // 1‑param generic — non‑paginated responses.  No Pagination property means
 // the JSON body is clean: { "statusCode": 200, "data": { ... } }.

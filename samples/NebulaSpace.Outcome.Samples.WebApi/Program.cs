@@ -93,6 +93,9 @@ builder.Services.AddOutcome(options =>
     // so STJ and Swagger serialize the full pagination shape.
     options.Success.SetResponse(typeof(SuccessResponse<,>));
 
+    // Non-generic — responses with no payload (http.Ok() with no arguments).
+    options.Success.SetResponse(typeof(SuccessResponse));
+
     // Pagination caps.
     options.Pagination.MaxPage = 25;
     options.Pagination.MaxLimit = 50;
