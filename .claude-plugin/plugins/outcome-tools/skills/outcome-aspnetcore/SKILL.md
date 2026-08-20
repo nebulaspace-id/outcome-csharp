@@ -32,9 +32,10 @@ using NebulaSpace.Outcome.AspNetCore.Options;
 
 builder.Services.AddOutcome(options =>
 {
-    // Success envelopes (open-generic types)
-    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
-    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
+    // Success envelopes
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated (open-generic)
+    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated (open-generic)
+    options.Success.SetResponse(typeof(SuccessResponse));      // no-payload (non-generic, http.Ok())
 
     // Error envelope
     options.Error.SetResponse<ErrorResponse>();
@@ -124,6 +125,7 @@ group.MapGet("/{id}", (Guid id, IOrderService service, IHttpResultFactory http) 
 
 | Helper | Behavior |
 | --- | --- |
+| `http.Ok()` | 200 with no payload (status-only envelope) |
 | `http.Ok(data)` | 200, raw or wrapped per `Success.Enabled` |
 | `http.Ok(data, pagination)` | 200 with pagination metadata |
 | `http.Created(data, idSelector)` | 201 with `Location` derived from request path |
@@ -168,6 +170,10 @@ These ship in the package, implement `IHttpFailure`, and need no registration:
 ```csharp
 var group = app.MapGroup("/products");
 
+// GET with no payload
+group.MapGet("/ping", (IHttpResultFactory http) => http.Ok())
+    .Produces<SuccessResponse>();
+
 // GET with 404
 group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
     service.GetProduct(id).ToResult(http, product => http.Ok(product)))
@@ -204,6 +210,9 @@ public class ProductsController : ControllerBase
 {
     private readonly IProductService _service;
     public ProductsController(IProductService service) => _service = service;
+
+    [HttpGet("ping")]
+    public IActionResult Ping() => _http.Ok().ToActionResult();
 
     [HttpGet("{id:guid}")]
     public Outcome<Product> Get(Guid id) => _service.GetProduct(id);   // 200 or 404
@@ -328,6 +337,31 @@ options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
 ```
 
 When `options.Success.Enabled = false`, successes are returned raw with no wrapper.
+
+### No-Payload Envelope (non-generic)
+
+`http.Ok()` (no arguments) returns a status-only envelope with no `data` field. The type
+needs only `From(HttpContext, int)` — no `ISuccessEnvelope<T>` required:
+
+```csharp
+public sealed class SuccessResponse
+{
+    public int StatusCode { get; init; }
+
+    public static object From(HttpContext httpContext, int statusCode) =>
+        new SuccessResponse { StatusCode = statusCode };
+}
+```
+
+Register: `options.Success.SetResponse(typeof(SuccessResponse));`
+
+Use with `.Produces<SuccessResponse>()` on the endpoint.
+
+`SetResponse(Type)` auto-detects whether the type is generic or non-generic — no separate
+method needed. A delegate overload is also available:
+`options.Success.SetResponse((http, statusCode) => new SuccessResponse { StatusCode = statusCode });`
+
+Without registration, the default is `DefaultSuccessResponse` — `{ "statusCode": 200 }`.
 
 ---
 
