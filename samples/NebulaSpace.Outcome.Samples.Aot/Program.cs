@@ -7,6 +7,7 @@
 //   - error envelope via the generic SetResponse<TEnvelope>()
 //   - pagination query types via RegisterQuery<T>(), with ScanAssemblies = false
 //   - failure mapping via MapFailure<T> (plain dictionaries)
+//   - JSON via a source-generated JsonSerializerContext (options.JsonSerializerContext)
 //
 // Note: no MVC controllers here — ASP.NET Core MVC itself is not NativeAOT-supported
 // (IL2026), so a controller sample cannot publish AOT regardless of the library.
@@ -53,6 +54,11 @@ builder.Services.AddOutcome(options =>
     // Error envelope — generic form dispatches via static abstract, AOT-safe.
     options.Error.SetResponse<ErrorResponse>();
 
+    // JSON — serialize every envelope through this source-generated context. Every type
+    // the library writes must be listed below (envelopes, payloads, pagination, arrays).
+    // Required for NativeAOT; without it the library falls back to reflection-based JSON.
+    options.JsonSerializerContext = SampleJsonContext.Default;
+
     // Pagination caps. These are plain properties — still work under AOT. They are
     // copied to each query type's static fields by Configure, dispatched through
     // RegisterQuery<T>() below (no assembly scan, no reflection).
@@ -75,9 +81,10 @@ app.UseOutcomeExceptionHandler();   // BEFORE routing
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
-// Non-paginated success through the delegate envelope.
+// Non-paginated success through the delegate envelope. A named type, not an anonymous
+// one — source-generated JSON contexts cannot cover anonymous types.
 app.MapGet("/greet/{name}", (string name, IHttpResultFactory http) =>
-    http.Ok(new { greeting = $"Hello, {name}!" }));
+    http.Ok(new GreetingResponse($"Hello, {name}!")));
 
 // No payload — status-only envelope.
 app.MapGet("/ping", (IHttpResultFactory http) => http.Ok());
@@ -178,8 +185,28 @@ public sealed class CatalogInfo : IPaginationDetails
     public long? TotalItems { get; init; }
 }
 
+/// <summary>Payload for the greeting endpoint (named, not anonymous — source-gen contexts cannot cover anonymous types).</summary>
+public sealed record GreetingResponse(string Greeting);
+
 /// <summary>Payload type for the catalog endpoint.</summary>
 public sealed record Product(int Id);
+
+/// <summary>
+/// Source-generated JSON context for every type the library writes to the response body.
+/// Must stay in sync with the payloads and envelopes the endpoints return. No
+/// <c>[JsonSourceGenerationOptions]</c> here — the JSON policy (camelCase, omit nulls)
+/// comes from Program.cs's ConfigureHttpJsonOptions, which the library honors even when
+/// serializing through this context.
+/// </summary>
+[JsonSerializable(typeof(SuccessResponse))]
+[JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(GreetingResponse))]
+[JsonSerializable(typeof(Product))]
+[JsonSerializable(typeof(Product[]))]
+[JsonSerializable(typeof(CatalogInfo))]
+public partial class SampleJsonContext : JsonSerializerContext
+{
+}
 
 /// <summary>An app failure mapped to 429 via MapFailure at startup.</summary>
 public sealed class RateLimitFailure : Failure

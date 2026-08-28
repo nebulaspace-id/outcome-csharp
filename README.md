@@ -160,12 +160,15 @@ Before wiring up the ASP.NET Core integration, know the extension points. You do
 
 | Package | What's inside | Targets | Dependencies |
 | --- | --- | --- | --- |
-| `NebulaSpace.Outcome` | `Outcome`, `Outcome<T>`, `Failure`, `Unit` | **netstandard2.0** | none |
-| `NebulaSpace.Outcome.AspNetCore` | `IHttpResultFactory`, options, failure types, pagination, exception handling | **net7.0** | core + `Microsoft.AspNetCore.App` |
+| `NebulaSpace.Outcome` | `Outcome`, `Outcome<T>`, `Failure`, `Unit` | **netstandard2.0**, net8.0 | none |
+| `NebulaSpace.Outcome.AspNetCore` | `IHttpResultFactory`, options, failure types, pagination, exception handling | **net8.0** | core + `Microsoft.AspNetCore.App` |
 
-The core stays `netstandard2.0` so it runs on .NET Framework 4.6.1+. The ASP.NET Core package takes the `net7.0` floor to enable
+The core ships a `netstandard2.0` build so it runs on .NET Framework 4.6.1+, plus a `net8.0`
+build for NativeAOT consumers (AOT cannot compile `netstandard2.0`). The ASP.NET Core package
+takes the `net8.0` floor for
 [static abstract interface members](https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/static-abstract-interface-members)
-(C# 11). Both install on every later runtime.
+and the runtime-resolved `JsonTypeInfo` serialization overload that AOT-safe envelopes use.
+Both install on every runtime from their floor up.
 
 The `Type`-based overloads (`SetResponse(typeof(...))`) close open-generic envelopes with
 `MakeGenericType` per request. That's by design — you get typed Swagger schemas
@@ -186,6 +189,7 @@ reflection-free alternatives:
 | No-payload success | `options.Success.SetResponse(typeof(SuccessResponse))` | `options.Success.SetResponse((http, statusCode) => ...)` |
 | Error envelope | `options.Error.SetResponse(typeof(MyError))` | `options.Error.SetResponse<MyError>()` — generic form, static abstract dispatch |
 | Pagination query discovery | `AddOutcome` assembly scan (reflection) | `options.Pagination.ScanAssemblies = false` + `options.Pagination.RegisterQuery<TQuery>()` — static interface dispatch |
+| **JSON serialization** | `WriteAsJsonAsync(object)` (runtime reflection) | `options.JsonSerializerContext = AppJsonContext.Default` — source-generated `JsonTypeInfo` |
 
 Failure and exception mappers (`MapFailure<T>`, `MapException<T>`) are plain dictionaries
 and never touch reflection.
@@ -193,6 +197,13 @@ and never touch reflection.
 A full AOT-safe configuration:
 
 ```csharp
+[JsonSerializable(typeof(SuccessResponse))]
+[JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(Order))]
+[JsonSerializable(typeof(Order[]))]
+[JsonSerializable(typeof(MyKeysetInfo))]
+public partial class AppJsonContext : JsonSerializerContext { }
+
 builder.Services.AddOutcome(options =>
 {
     // Success envelope — delegate overload, no MakeGenericType. Handles paginated and
@@ -211,6 +222,11 @@ builder.Services.AddOutcome(options =>
 
     // Error envelope — generic form dispatches via static abstract, AOT-safe
     options.Error.SetResponse<ErrorResponse>();
+
+    // JSON — source-generated context for every type the library writes to the body.
+    // The JSON policy (camelCase, null handling, converters) still comes from Program.cs's
+    // ConfigureHttpJsonOptions; the context only supplies type metadata, AOT-safe.
+    options.JsonSerializerContext = AppJsonContext.Default;
 
     // Pagination — no assembly scan; register each query type explicitly (including the
     // built-in Default* types if you use them)
@@ -237,7 +253,7 @@ public sealed class SuccessResponse
 }
 ```
 
-Two notes on the trade-offs:
+Notes on the trade-offs:
 
 - **Swagger schema.** `Data` and `Pagination` are `object`, so Swagger/OpenAPI documents
   them as generic objects instead of the concrete types. The JSON itself is unchanged —
@@ -246,6 +262,13 @@ Two notes on the trade-offs:
   System.Text.Json serializes an interface-typed property using the interface contract,
   which for a marker interface is an empty `{}`. With `object`, the concrete
   `DefaultOffsetInfo` / `DefaultCursorInfo` shape appears.
+- **The context only lists types.** The JSON policy is *not* copied into the context — it
+  comes from your `ConfigureHttpJsonOptions` in Program.cs, which the library honors even
+  when serializing through the context. Do not add `[JsonSourceGenerationOptions]` unless
+  you want a policy that differs from Program.cs.
+- **Types missing from the context fail fast.** If the library needs to write a type you
+  did not list, serialization throws with a clear message — it never silently falls back
+  to reflection (which AOT cannot do).
 
 The rest of the integration — failure mapping, exception handling, `IHttpResultFactory`
 helpers — works identically on both paths.

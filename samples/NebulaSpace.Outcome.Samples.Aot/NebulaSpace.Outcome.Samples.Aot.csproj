@@ -5,11 +5,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <!-- PublishAot is passed at publish time, not here, so the project stays in the
-         solution and `dotnet build -warnaserror` stays clean (AOT publish emits trim
-         warnings that would otherwise fail it):
-         dotnet publish samples/NebulaSpace.Outcome.Samples.Aot -c Release -r win-x64 -s -p:PublishAot=true
-         (NativeAOT also needs the C++ linker / clang on the build machine.) -->
+    <PublishAot>true</PublishAot>
+    <!-- Scoped to THIS project so it does not propagate as a global property to the
+         referenced netstandard2.0 core library (which cannot be AOT-compiled).
+         Publish with `dotnet publish -c Release -r win-x64 -s`.
+         NativeAOT also needs the C++ linker / clang on the build machine. -->
   </PropertyGroup>
 
   <ItemGroup>

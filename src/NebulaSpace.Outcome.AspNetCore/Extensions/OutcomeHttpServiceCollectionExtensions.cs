@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
@@ -53,25 +54,7 @@ public static class OutcomeHttpServiceCollectionExtensions
         // register query types explicitly with options.Pagination.RegisterQuery<TQuery>().
         if (options.Pagination.ScanAssemblies)
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (assembly.IsDynamic) continue;
-
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
-                catch { continue; }
-
-                foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
-                {
-                    var configureMethod = type.GetMethod(
-                        nameof(IPaginatedQuery.Configure),
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                        null, [typeof(PaginationOptions)], null);
-
-                    configureMethod?.Invoke(null, [options.Pagination]);
-                }
-            }
+            ConfigureQueriesByAssemblyScan(options);
         }
 
         // Explicit registrations (AOT-safe path) run regardless — Configure is dispatched
@@ -89,5 +72,37 @@ public static class OutcomeHttpServiceCollectionExtensions
         services.AddTransient<OutcomeExceptionMiddleware>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Reflection-based discovery of <c>IPaginatedQuery</c> implementors. Guarded by
+    /// <see cref="PaginationOptions.ScanAssemblies"/>: AOT apps disable the scan and register
+    /// query types explicitly (static interface dispatch), so this code never runs there.
+    /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "Guarded by PaginationOptions.ScanAssemblies; AOT apps disable the scan and register query types explicitly.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Same guard.")]
+    private static void ConfigureQueriesByAssemblyScan(OutcomeOptions options)
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic) continue;
+
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
+            catch { continue; }
+
+            foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
+            {
+                var configureMethod = type.GetMethod(
+                    nameof(IPaginatedQuery.Configure),
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, [typeof(PaginationOptions)], null);
+
+                configureMethod?.Invoke(null, [options.Pagination]);
+            }
+        }
     }
 }

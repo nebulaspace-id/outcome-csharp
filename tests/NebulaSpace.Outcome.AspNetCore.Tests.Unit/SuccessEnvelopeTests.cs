@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
@@ -15,7 +17,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 /// default <see cref="DefaultSuccessResponse{T}"/> when no envelope is configured.
 /// A custom envelope must implement <see cref="ISuccessEnvelope{T}"/>.
 /// </summary>
-public class SuccessEnvelopeTests
+public partial class SuccessEnvelopeTests
 {
     [Fact]
     public async Task Ok_Default_SerializesDefaultSuccessResponse()
@@ -222,6 +224,52 @@ public class SuccessEnvelopeTests
         Assert.Equal(3, doc.RootElement.GetProperty("pagination").GetProperty("totalPages").GetInt32());
     }
 
+    [Fact]
+    public async Task Ok_WithJsonSerializerContext_RespectsHttpJsonOptions()
+    {
+        // AOT-safe path: types resolve through the source-generated context, but the JSON
+        // policy (camelCase here) still comes from the app's HttpJsonOptions — Program.cs
+        // stays the source of truth.
+        var services = new ServiceCollection()
+            .AddLogging()
+            .ConfigureHttpJsonOptions(o =>
+                o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
+            .BuildServiceProvider();
+
+        var factory = ResultTestHelper.CreateFactory(options =>
+        {
+            options.JsonSerializerContext = TestJsonContext.Default;
+            options.Success.SetResponse((data, pagination, http, statusCode) =>
+                new ContextEnvelope { StatusCode = statusCode, Data = data });
+        });
+
+        var capture = await ResultTestHelper.ExecuteAsync(
+            factory.Ok(new TestPayload(7)),
+            ctx => ctx.RequestServices = services);
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        using var doc = JsonDocument.Parse(capture.Body);
+        Assert.Equal(200, doc.RootElement.GetProperty("statusCode").GetInt32());
+        Assert.Equal(7, doc.RootElement.GetProperty("data").GetProperty("id").GetInt32());
+    }
+
+    [Fact]
+    public async Task Ok_WithContext_TypeMissingFromContext_FailsFast()
+    {
+        // UnknownType is NOT in TestJsonContext — serialization must fail fast instead of
+        // silently falling back to reflection (which AOT cannot do). STJ throws
+        // NotSupportedException when it cannot resolve the nested object-typed member.
+        var factory = ResultTestHelper.CreateFactory(options =>
+        {
+            options.JsonSerializerContext = TestJsonContext.Default;
+            options.Success.SetResponse((data, pagination, http, statusCode) =>
+                new ContextEnvelope { StatusCode = statusCode, Data = data });
+        });
+
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            ResultTestHelper.ExecuteAsync(factory.Ok(new UnknownType())));
+    }
+
     /// <summary>An envelope built by the AOT-safe delegate overload — no interface required.</summary>
     private sealed class DelegateEnvelope
     {
@@ -268,6 +316,31 @@ public class SuccessEnvelopeTests
                 Data = data,
                 Pagination = pagination is TPage typed ? typed : default,
             };
+    }
+
+    /// <summary>Envelope written by the context-serialization test delegate.</summary>
+    private sealed class ContextEnvelope
+    {
+        public int StatusCode { get; set; }
+        public object? Data { get; set; }
+    }
+
+    private sealed record TestPayload(int Id);
+
+    private sealed class UnknownType
+    {
+        public int X { get; set; }
+    }
+
+    /// <summary>
+    /// Source-generated context covering the types used by the context-serialization tests.
+    /// No <c>[JsonSourceGenerationOptions]</c>: the JSON policy must come from the app's
+    /// HttpJsonOptions, proving Program.cs stays the source of truth.
+    /// </summary>
+    [JsonSerializable(typeof(ContextEnvelope))]
+    [JsonSerializable(typeof(TestPayload))]
+    private partial class TestJsonContext : JsonSerializerContext
+    {
     }
 
     /// <summary>An envelope type that forgets to implement <c>ISuccessEnvelope{T}</c> — Set must fail fast.</summary>

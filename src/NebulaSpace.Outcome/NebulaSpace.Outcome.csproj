@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netstandard2.0</TargetFramework>
+        <!-- netstandard2.0 keeps the package usable on .NET Framework 4.6.1+ and old
+             runtimes; net8.0 gives NativeAOT consumers a runtime-specific asset
+             (AOT cannot compile netstandard2.0). -->
+        <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
         <Version>0.4.0</Version>
     </PropertyGroup>
 

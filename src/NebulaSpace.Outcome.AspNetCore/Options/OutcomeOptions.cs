@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
@@ -46,6 +48,28 @@ public sealed class OutcomeOptions
     /// <c>options.Pagination.MaxPage/MaxLimit</c> in <c>AddOutcome</c>.
     /// </summary>
     public PaginationOptions Pagination { get; } = new();
+
+    /// <summary>
+    /// A source-generated <see cref="JsonSerializerContext"/> covering every type the library
+    /// writes to the response body — the success and error envelopes, your payload types, and
+    /// your pagination metadata types. <b>Required for NativeAOT</b>: when set, the library
+    /// serializes envelopes through it (via <c>GetTypeInfo</c>), so no reflection is used.
+    ///
+    /// <para>
+    /// When <c>null</c> (the default), the library uses <c>WriteAsJsonAsync</c> with your
+    /// app's JSON options — fine for JIT apps, but not NativeAOT-safe.
+    /// </para>
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// [JsonSerializable(typeof(SuccessResponse))]
+    /// [JsonSerializable(typeof(ErrorResponse))]
+    /// public partial class AppJsonContext : JsonSerializerContext { }
+    ///
+    /// options.JsonSerializerContext = AppJsonContext.Default;
+    /// </code>
+    /// </example>
+    public JsonSerializerContext? JsonSerializerContext { get; set; }
 
     // ── Internal facades for the rest of the library ──────────────────
 

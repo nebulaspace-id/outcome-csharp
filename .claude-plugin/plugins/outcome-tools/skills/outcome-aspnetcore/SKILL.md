@@ -17,7 +17,7 @@ dotnet add package NebulaSpace.Outcome
 dotnet add package NebulaSpace.Outcome.AspNetCore
 ```
 
-The core package targets **netstandard2.0** (no dependencies). The ASP.NET Core package targets **net7.0+**.
+The core package targets **netstandard2.0** (no dependencies) plus **net8.0** for NativeAOT consumers. The ASP.NET Core package targets **net8.0+**.
 
 ---
 
@@ -71,10 +71,17 @@ builder.Services.AddOutcome(options =>
 
 > **AOT:** `SetResponse(typeof(...))` uses `MakeGenericType` and is not NativeAOT-safe.
 > For AOT, register envelopes with the delegate overloads and the generic
-> `SetResponse<TEnvelope>()`, and register pagination query types explicitly — no
-> reflection at runtime:
+> `SetResponse<TEnvelope>()`, register pagination query types explicitly, and supply a
+> source-generated `JsonSerializerContext` for JSON — no reflection at runtime:
 >
 > ```csharp
+> [JsonSerializable(typeof(SuccessResponse))]
+> [JsonSerializable(typeof(ErrorResponse))]
+> [JsonSerializable(typeof(Order))]
+> [JsonSerializable(typeof(Order[]))]
+> [JsonSerializable(typeof(MyKeysetInfo))]
+> public partial class AppJsonContext : JsonSerializerContext { }
+>
 > builder.Services.AddOutcome(options =>
 > {
 >     // Success envelope — delegate overload; handles paginated responses too
@@ -89,6 +96,10 @@ builder.Services.AddOutcome(options =>
 >     // Error envelope — generic form dispatches via static abstract, AOT-safe
 >     options.Error.SetResponse<ErrorResponse>();
 >
+>     // JSON — source-generated context for every type the library writes. The policy
+>     // (camelCase, nulls) still comes from Program.cs's ConfigureHttpJsonOptions.
+>     options.JsonSerializerContext = AppJsonContext.Default;
+>
 >     // Pagination — disable the reflection-based assembly scan and register each query
 >     // type explicitly (built-in Default* included, if used)
 >     options.Pagination.ScanAssemblies = false;
@@ -102,6 +113,10 @@ builder.Services.AddOutcome(options =>
 > or `IPaginationDetails`: STJ serializes an interface-typed property using the interface
 > contract (empty `{}` for a marker interface), while object-typed properties serialize by
 > runtime type — the JSON keeps its full shape. Only the Swagger schema becomes generic.
+> Do NOT put `[JsonSourceGenerationOptions]` on the context unless you want a policy that
+> differs from Program.cs — the library honors the app's `ConfigureHttpJsonOptions` even
+> when serializing through the context. Types missing from the context throw at runtime
+> (fail fast), never silently falling back to reflection.
 
 ## Register Middleware
 
