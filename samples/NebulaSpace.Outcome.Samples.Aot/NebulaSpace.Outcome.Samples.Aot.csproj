@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- PublishAot is passed at publish time, not here, so the project stays in the
+         solution and `dotnet build -warnaserror` stays clean (AOT publish emits trim
+         warnings that would otherwise fail it):
+         dotnet publish samples/NebulaSpace.Outcome.Samples.Aot -c Release -r win-x64 -s -p:PublishAot=true
+         (NativeAOT also needs the C++ linker / clang on the build machine.) -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NebulaSpace.Outcome\NebulaSpace.Outcome.csproj" />
+    <ProjectReference Include="..\..\src\NebulaSpace.Outcome.AspNetCore\NebulaSpace.Outcome.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>
