@@ -207,6 +207,27 @@ public class OutcomeMvcExtensionsTests
     }
 
     [Fact]
+    public async Task Filter_ConvertsValueTypeOutcome()
+    {
+        // Boxing edge: payload is a struct, so Value round-trips through object.
+        Outcome<int> outcome = Outcome.Success(42);
+
+        var context = CreateResultExecutingContext(outcome);
+        ResultExecutionDelegate next = () => Task.FromResult(
+            new ResultExecutedContext(context, [], context.Result, null!));
+
+        var filter = new OutcomeResultAttribute();
+        await filter.OnResultExecutionAsync(context, next);
+
+        var capture = await ResultTestHelper.ExecuteActionResultAsync(
+            (IActionResult)context.Result);
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.Equal(42, json.GetProperty("data").GetInt32());
+    }
+
+    [Fact]
     public async Task Filter_PassesThroughNonOutcomeValues()
     {
         var context = CreateResultExecutingContext("plain string");

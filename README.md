@@ -250,6 +250,10 @@ Two notes on the trade-offs:
 The rest of the integration — failure mapping, exception handling, `IHttpResultFactory`
 helpers — works identically on both paths.
 
+**MVC.** The `[OutcomeResult]` filter dispatches through the `IOutcome` interface (boxed
+`Outcome<T>` values implement it), so controller actions returning `Outcome<T>` are
+AOT-safe too — no reflection in the filter.
+
 ---
 
 ## Core types

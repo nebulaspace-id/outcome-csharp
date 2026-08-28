@@ -5,7 +5,7 @@ namespace NebulaSpace.Outcome;
 /// or a failure (with a <see cref="Failure"/>). Immutable — instances are created only
 /// through the static factories and implicit conversions, and their state cannot change.
 /// </summary>
-public readonly struct Outcome<T>
+public readonly struct Outcome<T> : IOutcome
 {
     private readonly T? _value;
     private readonly Failure? _failure;
@@ -84,6 +84,17 @@ public readonly struct Outcome<T>
         failure = _failure;
     }
 
+    // ── IOutcome — non-generic view for reflection-free dispatch (e.g. MVC filter) ──
+
+    /// <inheritdoc />
+    object? IOutcome.Value => _isSuccess ? _value : null;
+
+    /// <inheritdoc />
+    Failure IOutcome.Failure => _isSuccess ? null! : _failure!;
+
+    /// <inheritdoc />
+    bool IOutcome.IsSuccess => _isSuccess;
+
     private static void ThrowOnValueAccessInFailureState() =>
         throw new InvalidOperationException(
             $"Cannot access Outcome<{typeof(T).Name}>.Value because the outcome is a failure. " +
@@ -108,4 +119,22 @@ public static class Outcome
 
     /// <summary>Creates a failed outcome carrying <paramref name="failure"/>.</summary>
     public static Outcome<Unit> Fail(Failure failure) => Outcome<Unit>.Fail(failure);
+}
+
+/// <summary>
+/// Non-generic view over a boxed <see cref="Outcome{T}"/>, for code that must dispatch
+/// without knowing <c>T</c> — e.g. the MVC <c>[OutcomeResult]</c> filter. A boxed
+/// <c>Outcome{T}</c> implements this interface; check <see cref="IsSuccess"/> first, then
+/// read <see cref="Value"/> (boxed payload) or <see cref="Failure"/>.
+/// </summary>
+public interface IOutcome
+{
+    /// <summary>Whether the operation succeeded. Check this before reading <see cref="Value"/> or <see cref="Failure"/>.</summary>
+    bool IsSuccess { get; }
+
+    /// <summary>The boxed payload on success, <c>null</c> on failure.</summary>
+    object? Value { get; }
+
+    /// <summary>The failure on failure, <c>null</c> on success.</summary>
+    Failure Failure { get; }
 }
