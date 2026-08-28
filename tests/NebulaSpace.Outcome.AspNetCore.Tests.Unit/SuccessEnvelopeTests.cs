@@ -197,6 +197,44 @@ public class SuccessEnvelopeTests
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
     }
 
+    [Fact]
+    public async Task Ok_Paginated_WithDelegateEnvelope_RoutesThroughDelegate()
+    {
+        // AOT-safe: the delegate overload also handles paginated responses — pagination
+        // arrives as the second argument, so the MakeGenericType fallback never runs.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse((data, pagination, http, statusCode) =>
+                new DelegateEnvelope
+                {
+                    StatusCode = statusCode,
+                    Data = data,
+                    Pagination = pagination,
+                }));
+
+        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(
+            new[] { 1, 2 },
+            DefaultOffsetInfo.Create(page: 2, limit: 2, totalItems: 5)));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        using var doc = JsonDocument.Parse(capture.Body);
+        Assert.Equal("delegate", doc.RootElement.GetProperty("via").GetString());
+        Assert.Equal(2, doc.RootElement.GetProperty("pagination").GetProperty("page").GetInt32());
+        Assert.Equal(3, doc.RootElement.GetProperty("pagination").GetProperty("totalPages").GetInt32());
+    }
+
+    /// <summary>An envelope built by the AOT-safe delegate overload — no interface required.</summary>
+    private sealed class DelegateEnvelope
+    {
+        public string Via { get; set; } = "delegate";
+        public int StatusCode { get; set; }
+        public object? Data { get; set; }
+
+        // `object`, not IPaginationDetails: STJ serializes an interface-typed property using
+        // the interface contract (empty for a marker interface). An object-typed property is
+        // serialized by its runtime type, so the full DefaultOffsetInfo shape appears in JSON.
+        public object? Pagination { get; set; }
+    }
+
     /// <summary>A user-defined 1‑param typed success envelope for non‑paginated responses.</summary>
     private sealed class AppSuccess<T> : ISuccessEnvelope<T>
     {

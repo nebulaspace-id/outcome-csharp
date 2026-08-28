@@ -49,13 +49,14 @@ public sealed class SuccessOptions
     internal Func<object?, IPaginationDetails?, HttpContext, int, object>? Factory { get; private set; }
 
     /// <summary>
-    /// Builds the concrete envelope instance from the payload, its concrete pagination
-    /// type, the current request, and the HTTP status. Only set when
-    /// <see cref="SetResponse(Type)"/> receives a <b>2‑param</b> open generic (e.g.
-    /// <c>typeof(SuccessResponse&lt;,&gt;)</c>). When non‑null and the response carries
-    /// pagination, the library prefers this factory over <see cref="Factory"/> so
-    /// System.Text.Json and Swagger see the full concrete pagination shape
-    /// (<see cref="DefaultOffsetInfo"/> or <see cref="DefaultCursorInfo"/>).
+    /// Builds the concrete envelope instance from the payload, its pagination, the current
+    /// request, and the HTTP status. Used for responses that carry pagination. Set either by
+    /// <see cref="SetResponse(Type)"/> receiving a <b>2‑param</b> open generic (e.g.
+    /// <c>typeof(SuccessResponse&lt;,&gt;)</c>), so System.Text.Json and Swagger see the full
+    /// concrete pagination shape, or by the delegate overload
+    /// <see cref="SetResponse(Func{object?, IPaginationDetails?, HttpContext, int, object})"/>
+    /// (AOT‑safe). When non‑null and the response carries pagination, the library prefers this
+    /// factory over <see cref="Factory"/> so pagination is never silently dropped.
     /// </summary>
     internal Func<object?, IPaginationDetails?, HttpContext, int, object>? PaginationFactory { get; private set; }
 
@@ -72,6 +73,12 @@ public sealed class SuccessOptions
     /// Stores the factory delegate as‑is — every request is a plain delegate call, zero
     /// reflection. Useful when the envelope shape is built inline or the constructor needs
     /// extra wiring.
+    ///
+    /// <para>
+    /// The same delegate also handles <b>paginated</b> responses (<c>http.Ok(data, pagination)</c>):
+    /// it receives the pagination metadata as the second argument, so the AOT‑safe delegate
+    /// path never falls back to the <c>MakeGenericType</c>-based default envelope.
+    /// </para>
     /// </summary>
     /// <param name="factory">
     /// A delegate that builds the response body from the payload, pagination, request,
@@ -86,7 +93,12 @@ public sealed class SuccessOptions
     /// </example>
     public void SetResponse(Func<object?, IPaginationDetails?, HttpContext, int, object> factory)
     {
-        Factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        if (factory is null) throw new ArgumentNullException(nameof(factory));
+
+        Factory = factory;
+        // The delegate is the single envelope for both paginated and non-paginated responses,
+        // so paginated requests route through it (AOT-safe) instead of the reflection fallback.
+        PaginationFactory = factory;
     }
 
     /// <summary>
