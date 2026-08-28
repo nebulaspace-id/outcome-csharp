@@ -441,15 +441,7 @@ The interface does not enforce limits. Your query type owns its caps as **static
 fields** (`MaxPage`, `MaxLimit`) plus a `Limit` property that clamps into them.
 `Configure` copies the app's caps from `PaginationOptions` into those fields.
 `AddOutcome` discovers every non-abstract `IPaginatedQuery` implementor across
-loaded assemblies and calls `Configure` once at startup. For deterministic startup with no
-assembly scan, disable discovery and register each query type explicitly — dispatched
-through the static abstract interface member, no reflection:
-
-```csharp
-options.Pagination.ScanAssemblies = false;
-options.Pagination.RegisterQuery<MyQuery>();
-options.Pagination.RegisterQuery<DefaultOffsetQuery>();  // built-ins, if used
-```
+loaded assemblies and calls `Configure` once at startup.
 
 ### Configuring Limits
 

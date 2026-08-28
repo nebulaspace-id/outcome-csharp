@@ -47,39 +47,27 @@ public static class OutcomeHttpServiceCollectionExtensions
         var options = new OutcomeOptions();
         configure?.Invoke(options);
 
-        // By default, discover every IPaginatedQuery implementor across loaded assemblies
-        // (reflection) and let each one copy the app's pagination caps into its static fields —
-        // no wiring needed. Set options.Pagination.ScanAssemblies = false and register query
-        // types explicitly with options.Pagination.RegisterQuery<TQuery>() to skip the scan.
-        if (options.Pagination.ScanAssemblies)
+        // Discover every IPaginatedQuery implementor and let each one copy the app's
+        // pagination caps into its own static fields. Scans all loaded assemblies so
+        // user-defined query types are picked up automatically — no wiring needed.
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            if (assembly.IsDynamic) continue;
+
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
+            catch { continue; }
+
+            foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
             {
-                if (assembly.IsDynamic) continue;
+                var configureMethod = type.GetMethod(
+                    nameof(IPaginatedQuery.Configure),
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, [typeof(PaginationOptions)], null);
 
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
-                catch { continue; }
-
-                foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
-                {
-                    var configureMethod = type.GetMethod(
-                        nameof(IPaginatedQuery.Configure),
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                        null, [typeof(PaginationOptions)], null);
-
-                    configureMethod?.Invoke(null, [options.Pagination]);
-                }
+                configureMethod?.Invoke(null, [options.Pagination]);
             }
-        }
-
-        // Explicit registrations run regardless — Configure is dispatched through the
-        // static abstract interface member, no reflection. Idempotent with the scan above,
-        // so double registration is harmless.
-        foreach (var configureQuery in options.Pagination.QueryConfigurators)
-        {
-            configureQuery(options.Pagination);
         }
 
         services.AddSingleton(options);
