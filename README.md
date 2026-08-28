@@ -2,7 +2,7 @@
 
 # NebulaSpace Outcome
 
-**A tiny, dependency-free result pattern for .NET with a first-class ASP.NET Core integration that turns outcomes into clean HTTP responses.**
+**A dependency-free result pattern for .NET with an ASP.NET Core integration that turns outcomes into clean HTTP responses.**
 
 [![NuGet][outcome-shield]][outcome-nuget]
 [![NuGet][aspnetcore-shield]][aspnetcore-nuget]
@@ -19,7 +19,10 @@
 
 - [Why Outcome?](#why-outcome)
 - [Quick start](#quick-start)
+- [How the pieces fit](#how-the-pieces-fit)
+- [Prerequisites](#prerequisites)
 - [Packages](#packages)
+- [AOT-safe configuration](#aot-safe-configuration)
 - [Core types](#core-types)
 - [Failures](#failures)
 - [ASP.NET Core integration](#aspnet-core-integration)
@@ -37,12 +40,9 @@
 
 ## Why Outcome?
 
-Exceptions are for exceptional things. Most business errors ("not found", "duplicate",
-"out of quota") are **expected outcomes**, not bugs. Modeling them as exceptions means
-`try/catch` control flow, lost compiler help, and a muddled contract.
+Exceptions are for exceptional things. "Not found", "duplicate", "out of quota" are expected outcomes, not bugs. Model them as exceptions and you get `try/catch` control flow, a contract that hides the failure, and no compiler help.
 
-`Outcome<T>` makes failure part of the method signature. The caller is **forced** to handle
-both branches — no hidden throw, no guesswork.
+`Outcome<T>` puts failure in the method signature. The caller has to handle both branches.
 
 ```csharp
 // Before: failure is invisible
@@ -62,9 +62,7 @@ public async Task<Outcome<Order>> CreateOrder(CreateOrderRequest request)
 }
 ```
 
-The ASP.NET Core integration closes the loop: `Outcome<T>` becomes `IResult` in one call,
-with a consistent, configurable error envelope across expected failures and unhandled
-exceptions.
+On the web this pays off immediately. The same outcome becomes a 200 with your data, or the correct 4xx/5xx with a consistent error body. No `try/catch`, no hand-rolled error JSON.
 
 ---
 
@@ -113,10 +111,48 @@ app.MapGroup("/greet")
        service.Greet(name).ToResult(http, greeting => http.Ok(new { greeting })));
 ```
 
-Success invokes your handler; failure becomes the correct HTTP error automatically.
-**No `try/catch` in the endpoint, ever.**
+That's it. Success runs your handler; failure becomes the right HTTP error. The endpoint never sees a `try/catch`.
 
-> The full runnable sample lives in [`samples/NebulaSpace.Outcome.Samples.WebApi`](samples/NebulaSpace.Outcome.Samples.WebApi).
+> Full runnable sample: [`samples/NebulaSpace.Outcome.Samples.WebApi`](samples/NebulaSpace.Outcome.Samples.WebApi).
+
+---
+
+## How the pieces fit
+
+One outcome, one response:
+
+```
+   service                  endpoint                      HTTP
+┌──────────────┐      ┌──────────────────────┐      ┌─────────────────┐
+│ Outcome<T>    │      │ .ToResult(http, ok)  │      │ 200 + success   │
+│  success→data │ ───▶ │   success → run ok() │ ───▶ │ 4xx + error     │
+│  failure→Fail │      │   failure → map+render│     │ 5xx + error     │
+└──────────────┘      └──────────────────────┘      └─────────────────┘
+```
+
+The moving parts:
+
+- **`Outcome<T>`** — what your service returns. Success carries a value; failure carries a `Failure`.
+- **`IHttpResultFactory`** — how your endpoint turns that outcome into an `IResult`. `http.Ok(...)`, `http.Created(...)`, `http.NotFound(...)`, and the rest.
+- **Envelopes** — the response body. Success envelopes wrap your data; error envelopes wrap the failure. Swap one out and your API's response shape changes in a single place.
+- **Failure mapping** — how a `Failure` becomes HTTP intent (status code, code, message). Built-in failures already know their status; app-specific failures use `MapFailure<T>` or `IHttpFailure`.
+
+None of this is mandatory. The defaults work as-is; you override the parts your API needs to be consistent about.
+
+---
+
+## Prerequisites
+
+Before wiring up the ASP.NET Core integration, know the extension points. You do not have to implement all of them, but **pagination expects you to bring your own types**.
+
+| Concept | Interface / type | Default if you don't customize |
+| --- | --- | --- |
+| Result pattern | `Outcome<T>`, `Failure`, `Unit` | Required — built into the core package |
+| HTTP result mapping | `IHttpResultFactory` | One is registered by `AddOutcome` |
+| App success envelope | `ISuccessEnvelope<T>` (or non-generic) | `DefaultSuccessResponse` (status-only) |
+| App error envelope | `IErrorEnvelope` | RFC 9457 `ProblemDetails` |
+| Failure → HTTP mapping | `IHttpFailure` (per-failure) or `options.Error.MapFailure<T>(...)` (startup) | Built-in `BadRequestFailure`, `NotFoundFailure`, etc. |
+| **Pagination** | `IPaginatedQuery` (query) + `IPaginationDetails` (info) | **None — define your own.** The `Default*` types are reference implementations, not a recommendation. See [Pagination](#pagination). |
 
 ---
 
@@ -127,24 +163,98 @@ Success invokes your handler; failure becomes the correct HTTP error automatical
 | `NebulaSpace.Outcome` | `Outcome`, `Outcome<T>`, `Failure`, `Unit` | **netstandard2.0** | none |
 | `NebulaSpace.Outcome.AspNetCore` | `IHttpResultFactory`, options, failure types, pagination, exception handling | **net7.0** | core + `Microsoft.AspNetCore.App` |
 
-The core stays `netstandard2.0` so it runs on .NET Framework 4.6.1+. The ASP.NET Core
-package takes the `net7.0` floor to enable
+The core stays `netstandard2.0` so it runs on .NET Framework 4.6.1+. The ASP.NET Core package takes the `net7.0` floor to enable
 [static abstract interface members](https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/static-abstract-interface-members)
 (C# 11). Both install on every later runtime.
 
-> **Not AOT-safe.** The ASP.NET Core package uses `MakeGenericType` and `MethodInfo.Invoke`
-> to close open-generic envelope types per request. This is by design — it gives you
-> typed Swagger schemas (`Data: Order`) without hand-writing a factory per payload type.
-> The trade-off is that NativeAOT is not supported. Use the delegate overloads
-> (`SetResponse(Func<...>)`) if you need ahead-of-time compilation, at the cost of
-> `Data: object` in Swagger.
+The `Type`-based overloads (`SetResponse(typeof(...))`) close open-generic envelopes with
+`MakeGenericType` per request. That's by design — you get typed Swagger schemas
+(`Data: Order`) without writing a factory per payload type. The trade-off is that the
+`Type`-based path is **not NativeAOT-safe**. See
+[AOT-safe configuration](#aot-safe-configuration) for the reflection-free alternative.
+
+---
+
+## AOT-safe configuration
+
+NativeAOT needs an app that uses no runtime reflection. The reflection-based pieces have
+reflection-free alternatives:
+
+| Piece | Reflection-based (not AOT-safe) | AOT-safe alternative |
+| --- | --- | --- |
+| Success envelope | `options.Success.SetResponse(typeof(SuccessResponse<>))` | `options.Success.SetResponse((data, pagination, http, statusCode) => ...)` |
+| No-payload success | `options.Success.SetResponse(typeof(SuccessResponse))` | `options.Success.SetResponse((http, statusCode) => ...)` |
+| Error envelope | `options.Error.SetResponse(typeof(MyError))` | `options.Error.SetResponse<MyError>()` — generic form, static abstract dispatch |
+| Pagination query discovery | `AddOutcome` assembly scan (reflection) | `options.Pagination.ScanAssemblies = false` + `options.Pagination.RegisterQuery<TQuery>()` — static interface dispatch |
+
+Failure and exception mappers (`MapFailure<T>`, `MapException<T>`) are plain dictionaries
+and never touch reflection.
+
+A full AOT-safe configuration:
+
+```csharp
+builder.Services.AddOutcome(options =>
+{
+    // Success envelope — delegate overload, no MakeGenericType. Handles paginated and
+    // non-paginated responses (pagination arrives as the second argument).
+    options.Success.SetResponse((data, pagination, http, statusCode) =>
+        new SuccessResponse
+        {
+            StatusCode = statusCode,
+            Data = data,
+            Pagination = pagination,
+        });
+
+    // No-payload success (http.Ok() with no args) — delegate overload
+    options.Success.SetResponse((http, statusCode) =>
+        new SuccessResponse { StatusCode = statusCode });
+
+    // Error envelope — generic form dispatches via static abstract, AOT-safe
+    options.Error.SetResponse<ErrorResponse>();
+
+    // Pagination — no assembly scan; register each query type explicitly (including the
+    // built-in Default* types if you use them)
+    options.Pagination.ScanAssemblies = false;
+    options.Pagination.RegisterQuery<MyKeysetQuery>();
+    options.Pagination.RegisterQuery<DefaultOffsetQuery>();
+    options.Pagination.RegisterQuery<DefaultCursorQuery>();
+
+    // Failure / exception mappers — dictionaries, no reflection
+    options.Error.MapFailure<QuotaExceededFailure>(f =>
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
+    options.Error.MapException<DomainException>(ex =>
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code));
+});
+
+// Plain class — no interface required; the delegate returns it as the response body.
+// Data and Pagination are `object`, not a concrete type: System.Text.Json serializes an
+// object-typed property by its runtime type, so the JSON keeps its full shape.
+public sealed class SuccessResponse
+{
+    public int StatusCode { get; init; }
+    public object? Data { get; init; }
+    public object? Pagination { get; init; }
+}
+```
+
+Two notes on the trade-offs:
+
+- **Swagger schema.** `Data` and `Pagination` are `object`, so Swagger/OpenAPI documents
+  them as generic objects instead of the concrete types. The JSON itself is unchanged —
+  System.Text.Json serializes object-typed properties by their runtime type.
+- **Pagination property type.** Keep `Pagination` as `object` (not `IPaginationDetails`).
+  System.Text.Json serializes an interface-typed property using the interface contract,
+  which for a marker interface is an empty `{}`. With `object`, the concrete
+  `DefaultOffsetInfo` / `DefaultCursorInfo` shape appears.
+
+The rest of the integration — failure mapping, exception handling, `IHttpResultFactory`
+helpers — works identically on both paths.
 
 ---
 
 ## Core types
 
-`Outcome<T>` is an immutable `readonly struct` — a discriminated union: either a **success**
-(with a `Value`) or a **failure** (with a `Failure`). Its state is fixed at creation.
+`Outcome<T>` is an immutable `readonly struct` — a discriminated union. It is either a **success** (with a `Value`) or a **failure** (with a `Failure`), and its state is fixed at creation.
 
 ```csharp
 Outcome<string> ok     = Outcome.Success("hello");      // success with a value
@@ -204,8 +314,7 @@ public async Task<Outcome<Unit>> DeleteOrder(int id)
 
 ## Failures
 
-Failures are immutable values derived from `Failure`. The base type carries a
-`Message` and an optional `Code`:
+Failures are immutable values derived from `Failure`. The base type carries a `Message` and an optional `Code`:
 
 ```csharp
 public sealed class NotFoundFailure : Failure
@@ -330,13 +439,11 @@ return result.ToResult(http, order => http.Created(order, $"/orders/{order.Id}/i
 
 ## MVC controllers
 
-The library supports MVC controllers through two patterns — both reuse the same
-`IHttpResultFactory`, envelopes, and failure mapping as Minimal APIs.
+The library supports MVC controllers through two patterns. Both reuse the same `IHttpResultFactory`, envelopes, and failure mapping as Minimal APIs.
 
-### Pattern 1: `[OutcomeResult]` filter (zero ceremony)
+### Pattern 1: `[OutcomeResult]` filter
 
-Return `Outcome<T>` directly from an action. The filter converts it to the correct HTTP
-response automatically:
+Return `Outcome<T>` directly from an action. The filter converts it to the correct HTTP response:
 
 ```csharp
 [ApiController, Route("products")]
@@ -357,7 +464,7 @@ public class ProductsController : ControllerBase
 
 ### Pattern 2: explicit `ToActionResult` / `ToActionResultAsync`
 
-When you need a custom success response (201 with `Location`, pagination metadata, etc.):
+For custom success responses (201 with `Location`, pagination metadata, etc.):
 
 ```csharp
 [HttpPost]
@@ -391,23 +498,15 @@ app.MapControllers();
 
 ## Response envelopes
 
-> **You are strongly encouraged to define your own envelopes.**
+> **Define your own envelopes.** The defaults are minimal: RFC 7807 `DefaultProblemDetails` for errors, a thin `{ statusCode, data }` wrapper for successes. Most APIs want one consistent, documented response shape — `traceId`, `code`, field-level errors. Typed envelopes give you:
 
-The defaults are minimal: RFC 7807 `DefaultProblemDetails` for errors and a thin
-`{ statusCode, data }` wrapper for successes. Real APIs usually want a consistent,
-documented shape — `traceId`, `code`, field-level errors. Typed envelopes give you:
-
-- **Your type, serialized as-is.** The body *is* `ErrorResponse` / `SuccessResponse<T>`.
-  OpenAPI documents the exact shape. Properties are real C#.
-- **One consistent body everywhere.** Failures, `MapFailure` results, mapped exceptions,
-  and unhandled exceptions all render through the same envelope.
-- **Fail-fast at startup.** If a type doesn't implement the interface, `SetResponse`
-  throws immediately.
+- **Your type, serialized as-is.** The body *is* `ErrorResponse` / `SuccessResponse<T>`. OpenAPI documents the exact shape. Properties are real C#.
+- **One consistent body everywhere.** Failures, `MapFailure` results, mapped exceptions, and unhandled exceptions all render through the same envelope.
+- **Early errors at startup.** If a type doesn't implement the interface, `SetResponse` throws immediately.
 
 ### Success envelope
 
-Implement `ISuccessEnvelope<T>` on an open-generic type. The library closes `T` per
-request so Swagger sees the exact payload type:
+Implement `ISuccessEnvelope<T>` on an open-generic type. The library closes `T` per request so Swagger sees the exact payload type:
 
 ```csharp
 public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
@@ -421,8 +520,7 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 }
 ```
 
-For **paginated** responses, use a 2-param generic so the second parameter carries the
-concrete pagination type (`DefaultOffsetInfo`, `DefaultCursorInfo`, or your own):
+For **paginated** responses, use a 2-param generic so the second parameter carries the concrete pagination type (`DefaultOffsetInfo`, `DefaultCursorInfo`, or your own):
 
 ```csharp
 public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
@@ -456,9 +554,7 @@ When `Success.Enabled` is `false`, successes are returned raw with no wrapper.
 
 ### No-payload envelope
 
-`http.Ok()` (no arguments) returns a status-only envelope with no `data` field. The
-non-generic envelope type needs only a `From(HttpContext, int)` method — no
-`ISuccessEnvelope<T>` contract required:
+`http.Ok()` (no arguments) returns a status-only envelope with no `data` field. The non-generic envelope type needs only a `From(HttpContext, int)` method — no `ISuccessEnvelope<T>` contract required:
 
 ```csharp
 public sealed class SuccessResponse
@@ -483,8 +579,7 @@ Without registration, the default is `DefaultSuccessResponse` — `{ "statusCode
 
 ### Error envelope
 
-`ErrorOptions.SetResponse<T>()` makes the error body any class implementing
-`IErrorEnvelope`. Zero-reflection dispatch via `static abstract`:
+`ErrorOptions.SetResponse<T>()` makes the error body any class implementing `IErrorEnvelope`. Zero-reflection dispatch via `static abstract`:
 
 ```csharp
 public sealed class ErrorResponse : IErrorEnvelope
@@ -530,9 +625,7 @@ Without `SetResponse`, the default is RFC 7807 with only `title`, `status`, `det
 
 ## Exception handling
 
-Unhandled exceptions normally fall through to ASP.NET Core's default error page — a
-different shape. The exception-handling middleware converts them into the **same envelope**
-as expected failures:
+Unhandled exceptions normally fall through to ASP.NET Core's default error page — a different shape. The exception-handling middleware converts them into the **same envelope** as expected failures:
 
 ```csharp
 builder.Services.AddOutcome(options =>
@@ -559,17 +652,12 @@ app.UseOutcomeExceptionHandler();   // BEFORE routing
 
 ### How mapping works
 
-- **`MapException<T>`** works like `MapFailure<T>` — register any exception type, the
-  mapper returns HTTP intent, the error envelope renders it. Mapped exceptions bypass
-  `IncludeExceptionDetails`.
-- **Unmapped exceptions** are logged in full (with stack trace) and become a generic 500.
-  `IncludeExceptionDetails = false` (default) never leaks `ex.Message` to the client.
-  If the response has already started, the exception is re-thrown.
+- **`MapException<T>`** works like `MapFailure<T>` — register any exception type, the mapper returns HTTP intent, the error envelope renders it. Mapped exceptions bypass `IncludeExceptionDetails`.
+- **Unmapped exceptions** are logged in full (with stack trace) and become a generic 500. `IncludeExceptionDetails = false` (default) never leaks `ex.Message` to the client. If the response has already started, the exception is re-thrown.
 
 ### Ordering with custom middleware
 
-`UseOutcomeExceptionHandler` only renders the response. To log exceptions to your own
-store, register your middleware **before** the handler — it catches, records, re-throws:
+`UseOutcomeExceptionHandler` only renders the response. To log exceptions to your own store, register your middleware **before** the handler — it catches, records, re-throws:
 
 ```csharp
 // 1. Your logging middleware FIRST (outermost)
@@ -595,14 +683,9 @@ Middleware runs outer-to-inner: your middleware listed first wraps everything af
 
 ## Pagination
 
-Offset, cursor, and custom strategies all work through one `IPaginationDetails` marker
-interface and `http.Ok(data, pagination)`.
+Offset, cursor, and custom strategies all work through one `IPaginationDetails` marker interface and `http.Ok(data, pagination)`.
 
-> **You are encouraged to build your own pagination types.** The library ships
-> `DefaultOffsetQuery` / `DefaultCursorQuery` as reference implementations, but real APIs
-> benefit from owning the query, result, and metadata types — app-specific caps, naming,
-> extra fields, or a different strategy altogether. The sample project demonstrates this
-> with custom `OffsetQuery` and `CursorQuery` types built from scratch.
+> **Build your own pagination types.** The library ships `DefaultOffsetQuery` / `DefaultCursorQuery` as reference implementations, but real APIs benefit from owning the query, result, and metadata types — app-specific caps, naming, extra fields, or a different strategy altogether. The sample project demonstrates this with custom `OffsetQuery` and `CursorQuery` types built from scratch.
 > See [`samples/NebulaSpace.Outcome.Samples.WebApi/Shared/`](samples/NebulaSpace.Outcome.Samples.WebApi/Shared/).
 
 ### Configuring limits
@@ -612,8 +695,7 @@ options.Pagination.MaxPage = 25;    // max page number (offset)
 options.Pagination.MaxLimit = 50;   // max items per page (both strategies)
 ```
 
-Defaults are `int.MaxValue` (uncapped). Limits live on **static fields** (not properties)
-to avoid ASP.NET Core's `RequestDelegateFactory` binding them as query parameters.
+Defaults are `int.MaxValue` (uncapped). Limits live on **static fields** (not properties) to avoid ASP.NET Core's `RequestDelegateFactory` binding them as query parameters.
 
 ### Building your own pagination
 
@@ -625,9 +707,7 @@ Every pagination strategy needs three types:
 | **Result** | — | Service-layer return: items + raw navigation data |
 | **Info** | `IPaginationDetails` | Response metadata that goes into the success envelope |
 
-`AddOutcome` discovers all `IPaginatedQuery` implementors at startup and calls
-`Configure(PaginationOptions)` on each — so your custom query types pick up the app's
-caps automatically, with zero wiring.
+`AddOutcome` discovers all `IPaginatedQuery` implementors at startup and calls `Configure(PaginationOptions)` on each — so your custom query types pick up the app's caps automatically.
 
 ```csharp
 // 1. Query — AddOutcome calls Configure() automatically
@@ -719,17 +799,13 @@ group.MapGet("/", (IOrderService service, [AsParameters] DefaultOffsetQuery quer
 
 ### Custom strategies
 
-Any strategy (keyset, time-based, composite) works — implement the same three-type
-pattern (query, result, info) and it plugs straight into `http.Ok(data, pagination)`.
-The [sample project](samples/NebulaSpace.Outcome.Samples.WebApi/Shared/) demonstrates this
-with custom offset and cursor types built from scratch.
+Any strategy (keyset, time-based, composite) works — implement the same three-type pattern (query, result, info) and it plugs straight into `http.Ok(data, pagination)`. The [sample project](samples/NebulaSpace.Outcome.Samples.WebApi/Shared/) demonstrates this with custom offset and cursor types built from scratch.
 
 ---
 
 ## JSON serialization
 
-The library writes envelopes with `WriteAsJsonAsync`, which honors your app's JSON
-serializer options. A recommended setup (nulls omitted, camelCase, enums as strings):
+The library writes envelopes with `WriteAsJsonAsync`, which honors your app's JSON serializer options. A recommended setup (nulls omitted, camelCase, enums as strings):
 
 ```csharp
 using System.Text.Json;
@@ -772,8 +848,7 @@ dotnet test
 
 ## Claude Code plugin
 
-This repo ships a [Claude Code](https://claude.ai/code) plugin with skills that give
-Claude accurate guidance for using the library.
+This repo ships a [Claude Code](https://claude.ai/code) plugin with skills that give Claude accurate guidance for using the library.
 
 ### Install
 
@@ -793,8 +868,7 @@ Claude automatically loads the relevant skill when you write code that uses the 
 
 ### Team auto-config
 
-Pre-register the marketplace for your team so every contributor only needs the install
-step. Add to `.claude/settings.json`:
+Pre-register the marketplace for your team so every contributor only needs the install step. Add to `.claude/settings.json`:
 
 ```json
 "extraKnownMarketplaces": {

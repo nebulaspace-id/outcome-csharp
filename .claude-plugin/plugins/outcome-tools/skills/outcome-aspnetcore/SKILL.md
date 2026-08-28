@@ -69,7 +69,39 @@ builder.Services.AddOutcome(options =>
 
 `AddOutcome` registers `OutcomeOptions` (singleton), `IHttpResultFactory` (singleton), and the exception-handling middleware (transient). Calling it twice throws.
 
-> **AOT warning:** `SetResponse(typeof(...))` uses `MakeGenericType` and is not AOT-safe. For NativeAOT, use the delegate overload `SetResponse(Func<...>)`.
+> **AOT:** `SetResponse(typeof(...))` uses `MakeGenericType` and is not NativeAOT-safe.
+> For AOT, register envelopes with the delegate overloads and the generic
+> `SetResponse<TEnvelope>()`, and register pagination query types explicitly — no
+> reflection at runtime:
+>
+> ```csharp
+> builder.Services.AddOutcome(options =>
+> {
+>     // Success envelope — delegate overload; handles paginated responses too
+>     // (pagination arrives as the second argument). Data/Pagination become `object` in Swagger.
+>     options.Success.SetResponse((data, pagination, http, statusCode) =>
+>         new SuccessResponse { StatusCode = statusCode, Data = data, Pagination = pagination });
+>
+>     // No-payload success (http.Ok() with no args) — delegate overload
+>     options.Success.SetResponse((http, statusCode) =>
+>         new SuccessResponse { StatusCode = statusCode });
+>
+>     // Error envelope — generic form dispatches via static abstract, AOT-safe
+>     options.Error.SetResponse<ErrorResponse>();
+>
+>     // Pagination — disable the reflection-based assembly scan and register each query
+>     // type explicitly (built-in Default* included, if used)
+>     options.Pagination.ScanAssemblies = false;
+>     options.Pagination.RegisterQuery<MyKeysetQuery>();
+>     options.Pagination.RegisterQuery<DefaultOffsetQuery>();
+>     options.Pagination.RegisterQuery<DefaultCursorQuery>();
+> });
+> ```
+>
+> The envelope's `Data`/`Pagination` properties must be typed `object`, not a concrete type
+> or `IPaginationDetails`: STJ serializes an interface-typed property using the interface
+> contract (empty `{}` for a marker interface), while object-typed properties serialize by
+> runtime type — the JSON keeps its full shape. Only the Swagger schema becomes generic.
 
 ## Register Middleware
 
@@ -199,7 +231,7 @@ group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFact
 
 Two patterns for MVC controllers — both reuse the same `IHttpResultFactory`, envelopes, and failure mapping.
 
-### Pattern 1: `[OutcomeResult]` filter (zero ceremony)
+### Pattern 1: `[OutcomeResult]` filter
 
 Return `Outcome<T>` directly from an action. The filter converts it to the correct HTTP response:
 
@@ -411,43 +443,149 @@ Subclasses inherit their nearest registered base's mapping.
 
 ## Pagination
 
+> **Recommendation:** define your own pagination types. The library ships with
+> `Default*` reference implementations for convenience, but most apps want
+> query shapes and metadata tuned to their domain (keyset, hybrid, opaque
+> cursors, GraphQL-style connections, etc.). Implement the two interfaces
+> below and `AddOutcome` will discover and configure them automatically.
+
+### Prerequisites — the two interfaces
+
+A custom pagination strategy is three types:
+
+| Type | Role | Interface |
+| --- | --- | --- |
+| Query | Bound from the request, carries the caller's intent (page, cursor, after-key, …) | `IPaginatedQuery` |
+| Result | Returned from the service, carries the data the service actually produced | _none — plain DTO_ |
+| Info | Metadata describing the page; serialized as the second generic parameter of the success envelope | `IPaginationDetails` |
+
+The two interfaces are tiny. `IPaginatedQuery` has one static-abstract member,
+`Configure`; `IPaginationDetails` is an empty marker:
+
+```csharp
+public interface IPaginatedQuery
+{
+    static abstract void Configure(PaginationOptions options);
+}
+
+public interface IPaginationDetails { }
+```
+
+The interface does not enforce limits. Your query type owns its caps as **static
+fields** (`MaxPage`, `MaxLimit`) plus a `Limit` property that clamps into them.
+`Configure` copies the app's caps from `PaginationOptions` into those fields.
+`AddOutcome` discovers every non-abstract `IPaginatedQuery` implementor across
+loaded assemblies and calls `Configure` once at startup.
+
 ### Configuring Limits
 
 ```csharp
-options.Pagination.MaxPage = 25;    // max page number for offset
-options.Pagination.MaxLimit = 50;   // max items per page for both strategies
+options.Pagination.MaxPage = 25;    // max page number for offset-style queries
+options.Pagination.MaxLimit = 50;   // ceiling for every query type's Limit
 ```
 
-Defaults are `int.MaxValue` (uncapped). Limits are on **static fields** (not properties — RDE IL bug).
+Defaults are `int.MaxValue` (uncapped). Caps live on **static fields** of each
+query type (not properties — ASP.NET Core's `RequestDelegateFactory` would bind
+`public static` properties on `[AsParameters]` types as query parameters and emit
+invalid IL). `AddOutcome` runs your `Configure` for you, so the fields pick up the
+app's caps automatically.
 
-### Offset Pagination
+### Custom Pagination (recommended)
+
+Three small types, one endpoint. The query is bound by Minimal API binding,
+the result comes from your service, and the info describes the page back to
+the client:
 
 ```csharp
-// Service
-public OffsetResult<Order> GetOrders(OffsetQuery query)
+// Query — implements IPaginatedQuery
+public sealed class KeysetQuery : IPaginatedQuery
 {
-    var items = _orders.Skip(query.Offset).Take(query.Limit).ToArray();
-    return new OffsetResult<Order> { Items = items, TotalCount = _orders.Count };
+    public static int MaxLimit = 50;
+    private int _limit = 10;
+    public string? AfterKey { get; set; }
+    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
+    public static void Configure(PaginationOptions options) =>
+        MaxLimit = Math.Max(1, options.MaxLimit);
+}
+
+// Result — plain DTO returned by the service
+public sealed class KeysetResult<T>
+{
+    public IReadOnlyList<T> Items { get; init; } = Array.Empty<T>();
+    public string? NextKey { get; init; }
+    public long? TotalCount { get; init; }
+}
+
+// Info — implements IPaginationDetails; serialized as the second generic
+// parameter of the success envelope
+public sealed class KeysetInfo : IPaginationDetails
+{
+    public string? NextKey { get; init; }
+    public string? PreviousKey { get; init; }
+    public bool HasMore { get; init; }
+    public long? TotalItems { get; init; }
 }
 
 // Endpoint
-group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToOffsetInfo(query))))
-    .Produces<SuccessResponse<Order[], OffsetInfo>>();
+group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
+        http.Ok(page.Items, new KeysetInfo
+        {
+            NextKey = page.NextKey,
+            HasMore = page.NextKey is not null,
+            TotalItems = page.TotalCount,
+        })))
+    .Produces<SuccessResponse<Product[], KeysetInfo>>();
 ```
 
-### Cursor Pagination
+If you have a convention for building `Info` from `Result` (e.g. a
+`ToKeysetInfo()` helper on the result), use it. If not, build the info inline
+— the contract is just `IPaginationDetails`, and the serializer doesn't care
+which concrete type you used.
+
+### Built-in `Default*` (reference implementations)
+
+The package ships two ready-made strategies for users who don't want to write
+their own:
+
+| Strategy | Query | Result | Info |
+| --- | --- | --- | --- |
+| Offset | `DefaultOffsetQuery` | `DefaultOffsetResult<T>` | `DefaultOffsetInfo` |
+| Cursor | `DefaultCursorQuery` | `DefaultCursorResult<T>` | `DefaultCursorInfo` |
+
+They are **public** so they can be referenced and tested, but the library's
+recommendation is to treat them as samples — copy them, rename them, drop
+what you don't need. If `Default*` doesn't fit your domain, follow the
+`Custom Pagination` section above.
+
+**Offset:**
 
 ```csharp
 // Service
-public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
+public DefaultOffsetResult<Order> GetOrders(DefaultOffsetQuery query)
+{
+    var items = _orders.Skip(query.Offset).Take(query.Limit).ToArray();
+    return new DefaultOffsetResult<Order> { Items = items, TotalCount = _orders.Count };
+}
+
+// Endpoint
+group.MapGet("/", (IOrderService service, [AsParameters] DefaultOffsetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
+        http.Ok(page.Items, page.ToOffsetInfo(query))))
+    .Produces<SuccessResponse<Order[], DefaultOffsetInfo>>();
+```
+
+**Cursor:**
+
+```csharp
+// Service
+public DefaultCursorResult<Order> GetOrdersCursor(DefaultCursorQuery cursorQuery)
 {
     var startIndex = Decode(cursorQuery.Cursor); // null -> 0
     var items = _orders.Skip(startIndex).Take(cursorQuery.Limit).ToArray();
     var endIndex = startIndex + items.Length;
 
-    return new CursorResult<Order>
+    return new DefaultCursorResult<Order>
     {
         Items = items,
         PreviousCursor = startIndex == 0 ? null : Encode(Math.Max(0, startIndex - cursorQuery.Limit)),
@@ -457,41 +595,10 @@ public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
 }
 
 // Endpoint
-group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
+group.MapGet("/cursor", (IOrderService service, [AsParameters] DefaultCursorQuery cursorQuery, IHttpResultFactory http) =>
     Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToResult(http, page =>
         http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
-    .Produces<SuccessResponse<Order[], CursorInfo>>();
-```
-
-### Custom Pagination
-
-Three types needed: query (implements `IPaginatedQuery`), result, and metadata (implements `IPaginationDetails`). `AddOutcome` discovers and configures query types automatically.
-
-```csharp
-// Query
-public sealed class KeysetQuery : IPaginatedQuery
-{
-    public static int MaxLimit = 50;
-    private int _limit = 10;
-    public string? AfterKey { get; set; }
-    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
-    public static void Configure(PaginationOptions options) => MaxLimit = Math.Max(1, options.MaxLimit);
-}
-
-// Metadata
-public sealed class KeysetInfo : IPaginationDetails
-{
-    public string? NextKey { get; set; }
-    public string? PreviousKey { get; set; }
-    public bool HasMore { get; set; }
-    public long? TotalItems { get; set; }
-}
-
-// Endpoint
-group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToKeysetInfo())))
-    .Produces<SuccessResponse<Product[], KeysetInfo>>();
+    .Produces<SuccessResponse<Order[], DefaultCursorInfo>>();
 ```
 
 ---

@@ -13,7 +13,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// <para>
 /// This keeps the factory <b>Open/Closed</b> — new failure types add HTTP behavior
 /// without editing the mapping code, and the response shape stays typed. Combine with
-/// <see cref="FailureMappingOptions"/> to override built‑in failures at startup.
+/// <c>options.Error.MapFailure&lt;TFailure&gt;(f =&gt; ...)</c> to override built-in
+/// failures at startup.
 /// </para>
 /// </summary>
 public interface IHttpFailure

@@ -9,9 +9,10 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// A successful <see cref="IResult"/> for responses with no payload.
-/// When a custom success envelope is registered (<c>options.SuccessFactory</c>),
-/// it delegates to that factory with <c>null</c> data. Otherwise it uses
-/// <see cref="DefaultSuccessResponse"/> — a status-code-only envelope.
+/// When a custom no-payload envelope is registered via
+/// <c>options.Success.SetResponse(...)</c>, it delegates to that factory with
+/// <c>null</c> data. Otherwise it uses <see cref="DefaultSuccessResponse"/> — a
+/// status-code-only envelope.
 /// </summary>
 public sealed class SuccessEnvelopeResult : IResult
 {
@@ -48,9 +49,9 @@ public sealed class SuccessEnvelopeResult : IResult
 /// <para>
 /// Resolution order when envelopes are enabled:
 /// <list type="number">
-/// <item>Pagination + custom 2‑param envelope → <c>SuccessPaginationFactory</c></item>
-/// <item>Pagination + no 2‑param envelope → <see cref="DefaultSuccessResponse{TData,TPage}"/> (auto‑fallback)</item>
-/// <item>No pagination + custom 1‑param envelope → <c>SuccessFactory</c></item>
+/// <item>Pagination + a 2‑param envelope or the delegate overload → <c>SuccessPaginationFactory</c></item>
+/// <item>Pagination + no pagination‑aware envelope → <see cref="DefaultSuccessResponse{TData,TPage}"/> (auto‑fallback)</item>
+/// <item>No pagination + custom 1‑param envelope or delegate → <c>SuccessFactory</c></item>
 /// <item>No pagination + no envelope → <see cref="DefaultSuccessResponse{T}"/></item>
 /// </list>
 /// Pagination metadata is never silently dropped.
