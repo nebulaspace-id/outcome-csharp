@@ -631,6 +631,16 @@ Every pagination strategy needs three types:
 
 `AddOutcome` discovers all `IPaginatedQuery` implementors at startup and calls `Configure(PaginationOptions)` on each — so your custom query types pick up the app's caps automatically.
 
+For deterministic startup with no assembly scan, disable discovery and register each query
+type explicitly — `Configure` is then dispatched through the static abstract interface
+member:
+
+```csharp
+options.Pagination.ScanAssemblies = false;
+options.Pagination.RegisterQuery<OffsetQuery>();
+options.Pagination.RegisterQuery<DefaultOffsetQuery>();   // built-ins, if used
+```
+
 ```csharp
 // 1. Query — AddOutcome calls Configure() automatically
 public sealed class OffsetQuery : IPaginatedQuery
