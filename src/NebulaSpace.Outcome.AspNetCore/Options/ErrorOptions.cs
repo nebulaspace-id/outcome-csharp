@@ -38,10 +38,10 @@ public sealed class ErrorOptions
     internal Func<FailureDetails, HttpContext, object>? Factory { get; private set; }
 
     /// <summary>
-    /// <b>AOT-safe, zero‑reflection.</b> Sets the error envelope to a type implementing
-    /// <see cref="IErrorEnvelope"/>. Dispatches through the static abstract
-    /// <c>From(FailureDetails, HttpContext)</c> directly — no <c>GetMethod</c>, no
-    /// <c>Invoke</c>, no allocations beyond the envelope itself.
+    /// Sets the error envelope to a type implementing <see cref="IErrorEnvelope"/>.
+    /// Dispatches through the static abstract <c>From(FailureDetails, HttpContext)</c>
+    /// directly — no <c>GetMethod</c>, no <c>Invoke</c>, no allocations beyond the
+    /// envelope itself.
     ///
     /// <para>
     /// <b>Why is this generic while Success uses <c>typeof()</c>?</b>
@@ -67,10 +67,10 @@ public sealed class ErrorOptions
 
     /// <summary>
     /// Sets the error envelope by <see cref="Type"/>. Prefer the generic
-    /// <see cref="SetResponse{TEnvelope}"/> — it is compile‑time safe and AOT‑ready.
+    /// <see cref="SetResponse{TEnvelope}"/> — it is compile‑time safe.
     /// This overload exists for scenarios where the envelope type is only known at
     /// runtime; it caches the <see cref="MethodInfo"/> per type so the reflection cost
-    /// is paid once. Still uses <c>MethodInfo.Invoke</c> per request — <b>not AOT‑safe.</b>
+    /// is paid once.
     /// </summary>
     /// <param name="envelopeType">
     /// A <see cref="Type"/> implementing <see cref="IErrorEnvelope"/>.

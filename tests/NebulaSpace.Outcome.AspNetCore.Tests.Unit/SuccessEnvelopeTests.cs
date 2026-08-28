@@ -77,11 +77,11 @@ public class SuccessEnvelopeTests
     [Fact]
     public async Task Ok_WithTypedEnvelope_AndPagination_ForwardsPagination()
     {
-        // 2‑param envelope so STJ serializes the full OffsetInfo shape.
+        // 2‑param envelope so STJ serializes the full DefaultOffsetInfo shape.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(AppSuccess<,>)));
 
-        var pagination = OffsetInfo.Create(page: 2, limit: 10, totalItems: 37);
+        var pagination = DefaultOffsetInfo.Create(page: 2, limit: 10, totalItems: 37);
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -98,11 +98,11 @@ public class SuccessEnvelopeTests
     [Fact]
     public async Task Ok_WithTypedEnvelope_AndCursorPagination_ForwardsFullCursorInfo()
     {
-        // 2‑param envelope — TPage is CursorInfo, full shape serialized.
+        // 2‑param envelope — TPage is DefaultCursorInfo, full shape serialized.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(AppSuccess<,>)));
 
-        var cursorInfo = new CursorInfo
+        var cursorInfo = new DefaultCursorInfo
         {
             PreviousCursor = "prev-abc",
             NextCursor = "next-def",
@@ -214,7 +214,7 @@ public class SuccessEnvelopeTests
     }
 
     /// <summary>A 2‑param typed success envelope — TPage is the concrete pagination type,
-    /// so STJ and Swagger serialize full OffsetInfo / CursorInfo shape.</summary>
+    /// so STJ and Swagger serialize full DefaultOffsetInfo / DefaultCursorInfo shape.</summary>
     private sealed class AppSuccess<TData, TPage> : ISuccessEnvelope<TData>
     {
         public string? TraceId { get; set; }

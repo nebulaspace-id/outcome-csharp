@@ -89,7 +89,7 @@ builder.Services.AddOutcome(options =>
     options.Success.SetResponse(typeof(SuccessResponse<>));
 
     // 2-param open-generic — paginated responses.
-    // TPage is the concrete pagination type (OffsetInfo, CursorInfo, or custom)
+    // TPage is the concrete pagination type (DefaultOffsetInfo, DefaultCursorInfo, or custom)
     // so STJ and Swagger serialize the full pagination shape.
     options.Success.SetResponse(typeof(SuccessResponse<,>));
 

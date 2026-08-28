@@ -1,10 +1,19 @@
-using Microsoft.AspNetCore.Mvc.ModelBinding;
+using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
-namespace NebulaSpace.Outcome.AspNetCore.Pagination;
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
-/// Incoming offset-pagination parameters. Bound from the query string with
-/// <c>[AsParameters]</c>.
+/// Incoming offset-pagination parameters — bound from the query string with
+/// <c>[AsParameters]</c>.  This is a custom implementation built by the app,
+/// not the library's built-in <c>DefaultOffsetQuery</c>.
+///
+/// <para>
+/// Demonstrates how users can build their own offset pagination query with
+/// app-specific caps and naming while still leveraging the library's
+/// <see cref="IPaginatedQuery"/> auto-discovery for <see cref="PaginationOptions"/>
+/// propagation.
+/// </para>
 /// </summary>
 public sealed class OffsetQuery : IPaginatedQuery
 {
@@ -13,9 +22,7 @@ public sealed class OffsetQuery : IPaginatedQuery
     /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
     /// </summary>
     /// <remarks>
-    /// A <b>field</b>, not a settable property: a <c>public static</c> property with a public
-    /// setter makes ASP.NET Core's <c>RequestDelegateFactory</c> try to bind it as a query
-    /// parameter and emit invalid IL (<see cref="System.InvalidProgramException"/>).
+    /// A <b>field</b>, not a settable property — see <see cref="DefaultOffsetQuery.MaxPage"/>.
     /// </remarks>
     public static int MaxPage = int.MaxValue;
 
@@ -24,7 +31,7 @@ public sealed class OffsetQuery : IPaginatedQuery
     /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
     /// </summary>
     /// <remarks>
-    /// A <b>field</b>, not a settable property — see <see cref="MaxPage"/>.
+    /// A <b>field</b>, not a settable property — see <see cref="DefaultOffsetQuery.MaxPage"/>.
     /// </remarks>
     public static int MaxLimit = int.MaxValue;
 
@@ -48,11 +55,10 @@ public sealed class OffsetQuery : IPaginatedQuery
     /// <summary>
     /// The 0-based offset of the first item in this page, i.e. <c>(Page - 1) * Limit</c>.
     /// </summary>
-    [BindNever]
     public int Offset => (Page - 1) * Limit;
 
     /// <inheritdoc />
-    public static void Configure(Options.PaginationOptions options)
+    public static void Configure(PaginationOptions options)
     {
         MaxPage  = Math.Max(1, options.MaxPage);
         MaxLimit = Math.Max(1, options.MaxLimit);

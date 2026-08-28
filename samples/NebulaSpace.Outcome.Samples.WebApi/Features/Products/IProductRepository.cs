@@ -13,13 +13,10 @@ public interface IProductRepository
     bool ExistsByName(string name);
 
     /// <summary>Return a page of products (offset pagination).</summary>
-    OffsetResult<Product> GetAll(OffsetQuery query);
+    Shared.OffsetResult<Product> GetAll(Shared.OffsetQuery query);
 
     /// <summary>Return a page of products (cursor pagination).</summary>
     CursorResult<Product> GetAllCursor(CursorQuery query);
-
-    /// <summary>Return a page of products (keyset pagination — custom <see cref="KeysetInfo"/>).</summary>
-    KeysetResult<Product> GetAllKeyset(KeysetQuery query);
 
     /// <summary>Add a product and return it with its assigned id.</summary>
     Product Add(Product product);

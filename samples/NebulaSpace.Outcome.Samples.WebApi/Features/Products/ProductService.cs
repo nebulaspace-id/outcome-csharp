@@ -30,14 +30,11 @@ public sealed class ProductService : IProductService
         return product; // implicit conversion: Product → Outcome<Product>
     }
 
-    public OffsetResult<Product> GetProducts(OffsetQuery query) =>
+    public Shared.OffsetResult<Product> GetProducts(Shared.OffsetQuery query) =>
         _repo.GetAll(query);
 
     public CursorResult<Product> GetProductsCursor(CursorQuery query) =>
         _repo.GetAllCursor(query);
-
-    public KeysetResult<Product> GetProductsKeyset(KeysetQuery query) =>
-        _repo.GetAllKeyset(query);
 
     public async Task<Outcome<Product>> CreateProduct(CreateProductRequest request)
     {

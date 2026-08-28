@@ -33,11 +33,11 @@ public sealed class HttpResultFactory : IHttpResultFactory
         SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
 
     /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.OffsetInfo offsetInfo) =>
+    public IResult Ok<T>(T data, Pagination.DefaultOffsetInfo offsetInfo) =>
         SuccessEnvelopeResultFor(data, offsetInfo, StatusCodes.Status200OK);
 
     /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.CursorInfo cursorInfo) =>
+    public IResult Ok<T>(T data, Pagination.DefaultCursorInfo cursorInfo) =>
         SuccessEnvelopeResultFor(data, cursorInfo, StatusCodes.Status200OK);
 
     /// <inheritdoc />

@@ -14,13 +14,10 @@ public interface IProductService
     Outcome<Product> GetProduct(Guid productId);
 
     /// <summary>Get a page of products (offset pagination).</summary>
-    OffsetResult<Product> GetProducts(OffsetQuery query);
+    Shared.OffsetResult<Product> GetProducts(Shared.OffsetQuery query);
 
     /// <summary>Get a page of products (cursor pagination).</summary>
     CursorResult<Product> GetProductsCursor(CursorQuery query);
-
-    /// <summary>Get a page of products (keyset pagination — custom <see cref="KeysetInfo"/>).</summary>
-    KeysetResult<Product> GetProductsKeyset(KeysetQuery query);
 
     /// <summary>Create a product after validation and a uniqueness check.</summary>
     Task<Outcome<Product>> CreateProduct(CreateProductRequest request);

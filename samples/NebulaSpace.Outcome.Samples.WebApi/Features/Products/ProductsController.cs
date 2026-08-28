@@ -17,6 +17,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 /// </summary>
 [ApiController]
 [Route("mvc/products")]
+[Tags("Mvc")]
 [OutcomeResult]
 public class ProductsController : ControllerBase
 {
@@ -52,25 +53,14 @@ public class ProductsController : ControllerBase
         _service.GetProduct(id);
 
     // ── List (offset) ────────────────────────────────────────────────────────
-    // Page/limit bound from the query string. Pagination metadata in envelope.
+    // Custom offset pagination. Page/limit bound from the query string.
 
     [HttpGet]
-    public IActionResult List([FromQuery] OffsetQuery query)
+    public IActionResult List([FromQuery] Shared.OffsetQuery query)
     {
         var result = _service.GetProducts(query);
         return Outcome.Success(result.Items)
             .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetInfo(query)));
-    }
-
-    // ── List (keyset) ───────────────────────────────────────────────────────
-    // Custom IPaginationDetails. Uses the product id as the opaque key.
-
-    [HttpGet("keyset")]
-    public IActionResult ListKeyset([FromQuery] KeysetQuery query)
-    {
-        var result = _service.GetProductsKeyset(query);
-        return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(items, result.ToKeysetInfo()));
     }
 
     // ── List (cursor) ───────────────────────────────────────────────────────

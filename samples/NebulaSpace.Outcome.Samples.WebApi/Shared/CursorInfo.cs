@@ -1,13 +1,16 @@
-namespace NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
+
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
-/// Cursor-pagination metadata sent in the response body. Implements
-/// <see cref="IPaginationDetails"/> so the pipeline works with either offset or cursor
-/// pagination through one type.
+/// Custom cursor-pagination metadata sent in the response body. Implements
+/// <see cref="IPaginationDetails"/> so the library resolves the concrete type at
+/// runtime and System.Text.Json / Swagger serialize the full shape — <c>previousCursor</c>,
+/// <c>nextCursor</c>, <c>hasMore</c>, and <c>totalItems</c>.
 ///
 /// <para>
-/// Use <see cref="Create{T}"/> from the endpoint to build the metadata in one call from
-/// the incoming <see cref="CursorQuery"/> and the service's <see cref="CursorResult{T}"/>.
+/// Build via <see cref="Create{T}"/> or <see cref="CursorResult{T}.ToCursorInfo"/>
+/// — one line from the endpoint.
 /// </para>
 /// </summary>
 public sealed class CursorInfo : IPaginationDetails

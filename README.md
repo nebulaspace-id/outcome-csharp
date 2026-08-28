@@ -132,6 +132,13 @@ package takes the `net7.0` floor to enable
 [static abstract interface members](https://learn.microsoft.com/dotnet/csharp/language-reference/keywords/static-abstract-interface-members)
 (C# 11). Both install on every later runtime.
 
+> **Not AOT-safe.** The ASP.NET Core package uses `MakeGenericType` and `MethodInfo.Invoke`
+> to close open-generic envelope types per request. This is by design — it gives you
+> typed Swagger schemas (`Data: Order`) without hand-writing a factory per payload type.
+> The trade-off is that NativeAOT is not supported. Use the delegate overloads
+> (`SetResponse(Func<...>)`) if you need ahead-of-time compilation, at the cost of
+> `Data: object` in Swagger.
+
 ---
 
 ## Core types
@@ -415,7 +422,7 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 ```
 
 For **paginated** responses, use a 2-param generic so the second parameter carries the
-concrete pagination type (`OffsetInfo` or `CursorInfo`):
+concrete pagination type (`DefaultOffsetInfo`, `DefaultCursorInfo`, or your own):
 
 ```csharp
 public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
@@ -442,7 +449,7 @@ options.Success.SetResponse(typeof(SuccessResponse<,>));  // paginated
 
 ```csharp
 .Produces<SuccessResponse<Order>>()                       // Swagger knows Data: Order
-.Produces<SuccessResponse<Order[], OffsetInfo>>()         // Swagger knows Data + Pagination
+.Produces<SuccessResponse<Order[], DefaultOffsetInfo>>()   // Swagger knows Data + Pagination
 ```
 
 When `Success.Enabled` is `false`, successes are returned raw with no wrapper.
@@ -473,9 +480,6 @@ group.MapGet("/ping", (IHttpResultFactory http) => http.Ok())
 ```
 
 Without registration, the default is `DefaultSuccessResponse` — `{ "statusCode": 200 }`.
-
-> **AOT warning:** `SetResponse(typeof(...))` breaks NativeAOT. Use the delegate
-> overload `SetResponse(Func<...>)` instead. The trade-off is Swagger shows `Data: object`.
 
 ### Error envelope
 
@@ -594,6 +598,13 @@ Middleware runs outer-to-inner: your middleware listed first wraps everything af
 Offset, cursor, and custom strategies all work through one `IPaginationDetails` marker
 interface and `http.Ok(data, pagination)`.
 
+> **You are encouraged to build your own pagination types.** The library ships
+> `DefaultOffsetQuery` / `DefaultCursorQuery` as reference implementations, but real APIs
+> benefit from owning the query, result, and metadata types — app-specific caps, naming,
+> extra fields, or a different strategy altogether. The sample project demonstrates this
+> with custom `OffsetQuery` and `CursorQuery` types built from scratch.
+> See [`samples/NebulaSpace.Outcome.Samples.WebApi/Shared/`](samples/NebulaSpace.Outcome.Samples.WebApi/Shared/).
+
 ### Configuring limits
 
 ```csharp
@@ -604,13 +615,71 @@ options.Pagination.MaxLimit = 50;   // max items per page (both strategies)
 Defaults are `int.MaxValue` (uncapped). Limits live on **static fields** (not properties)
 to avoid ASP.NET Core's `RequestDelegateFactory` binding them as query parameters.
 
-### Offset
+### Building your own pagination
 
-| Type | Role |
-| --- | --- |
-| `OffsetQuery` | Incoming `page` / `limit`, bound from query string |
-| `OffsetResult<T>` | Service result: `Items` + `TotalCount` |
-| `OffsetInfo` | Response metadata: `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
+Every pagination strategy needs three types:
+
+| Type | Implements | Role |
+| --- | --- | --- |
+| **Query** | `IPaginatedQuery` | Incoming parameters, bound from query string via `[AsParameters]` |
+| **Result** | — | Service-layer return: items + raw navigation data |
+| **Info** | `IPaginationDetails` | Response metadata that goes into the success envelope |
+
+`AddOutcome` discovers all `IPaginatedQuery` implementors at startup and calls
+`Configure(PaginationOptions)` on each — so your custom query types pick up the app's
+caps automatically, with zero wiring.
+
+```csharp
+// 1. Query — AddOutcome calls Configure() automatically
+public sealed class OffsetQuery : IPaginatedQuery
+{
+    public static int MaxPage = int.MaxValue;
+    public static int MaxLimit = int.MaxValue;
+
+    private int _page = 1;
+    private int _limit = 10;
+
+    public int Page  { get => _page;  set => _page  = Math.Clamp(value, 1, MaxPage); }
+    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
+    public int Offset => (Page - 1) * Limit;
+
+    public static void Configure(PaginationOptions options)
+    {
+        MaxPage  = Math.Max(1, options.MaxPage);
+        MaxLimit = Math.Max(1, options.MaxLimit);
+    }
+}
+
+// 2. Result — returned by the service layer
+public sealed class OffsetResult<T>
+{
+    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public long TotalCount { get; set; }
+
+    public OffsetInfo ToOffsetInfo(OffsetQuery query) =>
+        OffsetInfo.Create(query, (int)TotalCount);
+}
+
+// 3. Info — goes into the success envelope
+public sealed class OffsetInfo : IPaginationDetails
+{
+    public int Page { get; set; }
+    public int Limit { get; set; }
+    public int TotalPages { get; set; }
+    public long? TotalItems { get; set; }
+    public bool HasMore => Page < TotalPages;
+
+    public static OffsetInfo Create(OffsetQuery query, int totalItems) => new()
+    {
+        Page = query.Page,
+        Limit = query.Limit,
+        TotalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / query.Limit),
+        TotalItems = totalItems,
+    };
+}
+```
+
+### Using pagination in an endpoint
 
 ```csharp
 // Service
@@ -627,70 +696,33 @@ group.MapGet("/", (IOrderService service, [AsParameters] OffsetQuery query, IHtt
     .Produces<SuccessResponse<Order[], OffsetInfo>>();
 ```
 
-### Cursor
+### Built-in defaults
 
-| Type | Role |
+The library ships ready-made types if you don't need custom naming or extra fields:
+
+| Type | Description |
 | --- | --- |
-| `CursorQuery` | Incoming `cursor` / `limit`, bound from query string |
-| `CursorResult<T>` | Service result: `Items`, `PreviousCursor`, `NextCursor`, `TotalCount` |
-| `CursorInfo` | Response metadata: `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
+| `DefaultOffsetQuery` | `page` / `limit` with `MaxPage` / `MaxLimit` caps |
+| `DefaultOffsetResult<T>` | `Items` + `TotalCount` |
+| `DefaultOffsetInfo` | `Page`, `Limit`, `TotalPages`, `TotalItems`, `HasMore` |
+| `DefaultCursorQuery` | `cursor` / `limit` with `MaxLimit` cap |
+| `DefaultCursorResult<T>` | `Items`, `PreviousCursor`, `NextCursor`, `TotalCount` |
+| `DefaultCursorInfo` | `PreviousCursor`, `NextCursor`, `HasMore`, `TotalItems` |
 
 ```csharp
-// Service
-public CursorResult<Order> GetOrdersCursor(CursorQuery cursorQuery)
-{
-    var startIndex = Decode(cursorQuery.Cursor); // null -> 0
-    var items = _orders.Skip(startIndex).Take(cursorQuery.Limit).ToArray();
-    var endIndex = startIndex + items.Length;
-
-    return new CursorResult<Order>
-    {
-        Items = items,
-        PreviousCursor = startIndex == 0 ? null : Encode(Math.Max(0, startIndex - cursorQuery.Limit)),
-        NextCursor = endIndex < _orders.Count ? Encode(endIndex) : null,
-        TotalCount = _orders.Count,
-    };
-}
-
-// Endpoint
-group.MapGet("/cursor", (IOrderService service, [AsParameters] CursorQuery cursorQuery, IHttpResultFactory http) =>
-    Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
-    .Produces<SuccessResponse<Order[], CursorInfo>>();
+// Using the built-in defaults directly
+group.MapGet("/", (IOrderService service, [AsParameters] DefaultOffsetQuery query, IHttpResultFactory http) =>
+    Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
+        http.Ok(page.Items, page.ToOffsetInfo(query))))
+    .Produces<SuccessResponse<Order[], DefaultOffsetInfo>>();
 ```
 
-### Custom
+### Custom strategies
 
-Any strategy (keyset, time-based, composite) works out of the box. You need three types:
-a query (`IPaginatedQuery`), a result, and metadata (`IPaginationDetails`). `AddOutcome`
-discovers and configures query types automatically.
-
-```csharp
-// Query — AddOutcome calls Configure() automatically
-public sealed class KeysetQuery : IPaginatedQuery
-{
-    public static int MaxLimit = 50;
-    private int _limit = 10;
-    public string? AfterKey { get; set; }
-    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
-    public static void Configure(PaginationOptions options) => MaxLimit = Math.Max(1, options.MaxLimit);
-}
-
-// Metadata — goes into the success envelope
-public sealed class KeysetInfo : IPaginationDetails
-{
-    public string? NextKey { get; set; }
-    public string? PreviousKey { get; set; }
-    public bool HasMore { get; set; }
-    public long? TotalItems { get; set; }
-}
-
-// Endpoint — same pattern as offset/cursor
-group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToKeysetInfo())))
-    .Produces<SuccessResponse<Product[], KeysetInfo>>();
-```
+Any strategy (keyset, time-based, composite) works — implement the same three-type
+pattern (query, result, info) and it plugs straight into `http.Ok(data, pagination)`.
+The [sample project](samples/NebulaSpace.Outcome.Samples.WebApi/Shared/) demonstrates this
+with custom offset and cursor types built from scratch.
 
 ---
 

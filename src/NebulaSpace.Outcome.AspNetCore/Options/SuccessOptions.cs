@@ -55,7 +55,7 @@ public sealed class SuccessOptions
     /// <c>typeof(SuccessResponse&lt;,&gt;)</c>). When non‑null and the response carries
     /// pagination, the library prefers this factory over <see cref="Factory"/> so
     /// System.Text.Json and Swagger see the full concrete pagination shape
-    /// (<see cref="OffsetInfo"/> or <see cref="CursorInfo"/>).
+    /// (<see cref="DefaultOffsetInfo"/> or <see cref="DefaultCursorInfo"/>).
     /// </summary>
     internal Func<object?, IPaginationDetails?, HttpContext, int, object>? PaginationFactory { get; private set; }
 
@@ -122,8 +122,8 @@ public sealed class SuccessOptions
     /// <para>
     /// When the type has <b>two</b> type parameters (e.g.
     /// <c>typeof(SuccessResponse&lt;,&gt;)</c>), the library closes the second parameter
-    /// with the concrete pagination type — <see cref="OffsetInfo"/> or
-    /// <see cref="CursorInfo"/> — so System.Text.Json and Swagger see the
+    /// with the concrete pagination type — <see cref="DefaultOffsetInfo"/> or
+    /// <see cref="DefaultCursorInfo"/> — so System.Text.Json and Swagger see the
     /// full pagination shape, not just the <see cref="IPaginationDetails"/> interface members.
     /// </para>
     ///
@@ -145,11 +145,6 @@ public sealed class SuccessOptions
     /// generic to a method. This is a platform constraint, not a design gap.
     /// </para>
     ///
-    /// <para>
-    /// <b>Uses <c>MakeGenericType</c> + cached <c>MethodInfo.Invoke</c>.</b>
-    /// Not AOT‑safe; for AOT scenarios use the delegate overload
-    /// <see cref="SetResponse(Func{object?, IPaginationDetails?, HttpContext, int, object})"/>.
-    /// </para>
     /// </summary>
     /// <param name="envelopeType">
     /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>
@@ -167,7 +162,7 @@ public sealed class SuccessOptions
     /// options.Success.SetResponse(typeof(ApiSuccess&lt;&gt;));
     ///
     /// // 2‑param open generic: TData + TPage, closed per request
-    /// // Pagination is typed as OffsetInfo or CursorInfo — full shape in STJ/Swagger
+    /// // Pagination is typed as DefaultOffsetInfo or DefaultCursorInfo — full shape in STJ/Swagger
     /// options.Success.SetResponse(typeof(SuccessResponse&lt;,&gt;));
     ///
     /// // Non‑generic: for http.Ok() with no arguments

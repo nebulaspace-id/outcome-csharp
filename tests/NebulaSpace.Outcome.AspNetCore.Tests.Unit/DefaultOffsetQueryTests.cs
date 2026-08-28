@@ -2,7 +2,7 @@ using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
-public class OffsetQueryTests
+public class DefaultOffsetQueryTests
 {
     [Theory]
     [InlineData(1, 1)]
@@ -13,14 +13,14 @@ public class OffsetQueryTests
     [InlineData(100, 25)] // clamped down to max
     public void Page_ClampsToBounds(int value, int expected)
     {
-        var orig = OffsetQuery.MaxPage;
-        OffsetQuery.MaxPage = 25;
+        var orig = DefaultOffsetQuery.MaxPage;
+        DefaultOffsetQuery.MaxPage = 25;
         try
         {
-            var query = new OffsetQuery { Page = value };
+            var query = new DefaultOffsetQuery { Page = value };
             Assert.Equal(expected, query.Page);
         }
-        finally { OffsetQuery.MaxPage = orig; }
+        finally { DefaultOffsetQuery.MaxPage = orig; }
     }
 
     [Theory]
@@ -32,20 +32,20 @@ public class OffsetQueryTests
     [InlineData(500, 50)] // clamped down to max
     public void Limit_ClampsToBounds(int value, int expected)
     {
-        var orig = OffsetQuery.MaxLimit;
-        OffsetQuery.MaxLimit = 50;
+        var orig = DefaultOffsetQuery.MaxLimit;
+        DefaultOffsetQuery.MaxLimit = 50;
         try
         {
-            var query = new OffsetQuery { Limit = value };
+            var query = new DefaultOffsetQuery { Limit = value };
             Assert.Equal(expected, query.Limit);
         }
-        finally { OffsetQuery.MaxLimit = orig; }
+        finally { DefaultOffsetQuery.MaxLimit = orig; }
     }
 
     [Fact]
     public void Defaults_PageToOne_LimitToTen()
     {
-        var query = new OffsetQuery();
+        var query = new DefaultOffsetQuery();
 
         Assert.Equal(1, query.Page);
         Assert.Equal(10, query.Limit);
@@ -54,22 +54,22 @@ public class OffsetQueryTests
     [Fact]
     public void StaticMaxes_CanBeChangedForCustomCaps()
     {
-        var origPage = OffsetQuery.MaxPage;
-        var origLimit = OffsetQuery.MaxLimit;
-        OffsetQuery.MaxPage = 100;
-        OffsetQuery.MaxLimit = 200;
+        var origPage = DefaultOffsetQuery.MaxPage;
+        var origLimit = DefaultOffsetQuery.MaxLimit;
+        DefaultOffsetQuery.MaxPage = 100;
+        DefaultOffsetQuery.MaxLimit = 200;
 
         try
         {
-            var query = new OffsetQuery { Page = 999, Limit = 999 };
+            var query = new DefaultOffsetQuery { Page = 999, Limit = 999 };
 
             Assert.Equal(100, query.Page);
             Assert.Equal(200, query.Limit);
         }
         finally
         {
-            OffsetQuery.MaxPage = origPage;
-            OffsetQuery.MaxLimit = origLimit;
+            DefaultOffsetQuery.MaxPage = origPage;
+            DefaultOffsetQuery.MaxLimit = origLimit;
         }
     }
 
@@ -80,7 +80,7 @@ public class OffsetQueryTests
     [InlineData(1, 50, 0)]
     public void Offset_IsZeroBased_FromPageAndLimit(int page, int limit, int expected)
     {
-        var query = new OffsetQuery { Page = page, Limit = limit };
+        var query = new DefaultOffsetQuery { Page = page, Limit = limit };
 
         Assert.Equal(expected, query.Offset);
     }
