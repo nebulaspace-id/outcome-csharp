@@ -1,4 +1,4 @@
-namespace NebulaSpace.Outcome.AspNetCore.Pagination;
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
 /// A single page of items together with the total count across all pages. The service
@@ -7,8 +7,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// (page/limit) from the raw data the service reports (items + count).
 ///
 /// <para>
-/// Use <see cref="OffsetInfo.Create(OffsetQuery,int)"/> to build the metadata from this
-/// result in one call.
+/// Use <see cref="ToOffsetInfo"/> to build the metadata from this result in one call.
 /// </para>
 /// </summary>
 /// <typeparam name="T">The type of each item in the page.</typeparam>

@@ -9,8 +9,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 ///
 /// <para>
 /// Register with <c>options.Error.SetResponse&lt;MyError&gt;()</c> — the library dispatches
-/// through the static abstract <c>From</c>, so it is <b>AOT‑safe, zero‑reflection</b>,
-/// and compile‑time safe. Because the serialized body <em>is</em> that type,
+/// through the static abstract <c>From</c> directly. Because the serialized body <em>is</em>
+/// that type,
 /// <c>.Produces&lt;MyError&gt;(404)</c> documents the exact error shape, and per‑request
 /// fields (<c>traceId</c>, <c>path</c>, custom) are real C# properties, not runtime
 /// dictionary keys.

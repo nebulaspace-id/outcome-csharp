@@ -46,13 +46,13 @@ public sealed class DefaultSuccessResponse<T> : ISuccessEnvelope<T>
 
 // ──────────────────────────────────────────────────────────────────────────
 // 2‑param generic — paginated responses.  TPage is the concrete pagination
-// type (OffsetInfo or CursorInfo) so STJ and Swagger serialize the full shape.
+// type (DefaultOffsetInfo or DefaultCursorInfo) so STJ and Swagger serialize the full shape.
 // ──────────────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// The library's default envelope for a successful <b>paginated</b> operation.
 /// <typeparamref name="TPage"/> is the concrete pagination metadata type
-/// (<see cref="Pagination.OffsetInfo"/> or <see cref="Pagination.CursorInfo"/>),
+/// (<see cref="Pagination.DefaultOffsetInfo"/> or <see cref="Pagination.DefaultCursorInfo"/>),
 /// so System.Text.Json and Swagger serialize the full shape — not just the
 /// three <see cref="IPaginationDetails"/> members.
 ///
@@ -63,8 +63,8 @@ public sealed class DefaultSuccessResponse<T> : ISuccessEnvelope<T>
 /// </summary>
 /// <typeparam name="TData">The payload type.</typeparam>
 /// <typeparam name="TPage">
-/// The concrete pagination metadata type — either <see cref="Pagination.OffsetInfo"/>
-/// or <see cref="Pagination.CursorInfo"/>.
+/// The concrete pagination metadata type — either <see cref="Pagination.DefaultOffsetInfo"/>
+/// or <see cref="Pagination.DefaultCursorInfo"/>.
 /// </typeparam>
 public sealed class DefaultSuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
 {
@@ -75,8 +75,8 @@ public sealed class DefaultSuccessResponse<TData, TPage> : ISuccessEnvelope<TDat
     public TData? Data { get; set; }
 
     /// <summary>
-    /// Pagination metadata with the full concrete shape — <see cref="Pagination.OffsetInfo"/>
-    /// for offset responses, <see cref="Pagination.CursorInfo"/> for cursor responses.
+    /// Pagination metadata with the full concrete shape — <see cref="Pagination.DefaultOffsetInfo"/>
+    /// for offset responses, <see cref="Pagination.DefaultCursorInfo"/> for cursor responses.
     /// </summary>
     public TPage? Pagination { get; set; }
 

@@ -26,8 +26,6 @@ public sealed class SuccessResponse
 // Swagger documents exactly that.
 //
 // Register: options.Success.SetResponse(typeof(SuccessResponse<>))
-//
-// NOT AOT-safe — uses MakeGenericType + cached MethodInfo.Invoke.
 // ──────────────────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -56,13 +54,11 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 
 // ──────────────────────────────────────────────────────────────────────────
 // 2‑param generic — paginated responses.  <typeparamref name="TPage"/> is
-// the concrete pagination type (<see cref="OffsetInfo"/> or <see cref="CursorInfo"/>),
+// the concrete pagination type (<see cref="OffsetInfo"/> or <see cref="CursorInfo"/> or custom),
 // so System.Text.Json and Swagger serialize the full shape — Page, Limit,
 // TotalPages, NextCursor, PreviousCursor, etc.
 //
 // Register: options.Success.SetResponse(typeof(SuccessResponse<,>))
-//
-// NOT AOT-safe — uses MakeGenericType + cached MethodInfo.Invoke.
 // ──────────────────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -73,7 +69,7 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 /// </summary>
 /// <typeparam name="TData">The payload type.</typeparam>
 /// <typeparam name="TPage">
-/// Concrete pagination type — <see cref="OffsetInfo"/> or <see cref="CursorInfo"/>.
+/// Concrete pagination type — <see cref="OffsetInfo"/>, <see cref="CursorInfo"/>, or custom.
 /// </typeparam>
 public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
 {

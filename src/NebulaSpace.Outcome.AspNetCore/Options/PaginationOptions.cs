@@ -2,8 +2,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 
 /// <summary>
 /// Pagination limits configurable at startup via <c>AddOutcome</c>. These values are copied
-/// to static fields on <see cref="Pagination.OffsetQuery"/> and
-/// <see cref="Pagination.CursorQuery"/> after <c>configure?.Invoke(options)</c>, so the
+/// to static fields on <see cref="Pagination.DefaultOffsetQuery"/> and
+/// <see cref="Pagination.DefaultCursorQuery"/> after <c>configure?.Invoke(options)</c>, so the
 /// query types — bound as <c>[AsParameters]</c> with parameterless constructors — pick up
 /// the app's chosen caps.
 ///
@@ -24,7 +24,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 public sealed class PaginationOptions
 {
     /// <summary>
-    /// Maximum page number a client can request for offset pagination (<see cref="Pagination.OffsetQuery"/>).
+    /// Maximum page number a client can request for offset pagination (<see cref="Pagination.DefaultOffsetQuery"/>).
     /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
     /// Clamped to at least 1 by the consuming query types.
     /// </summary>
@@ -32,7 +32,7 @@ public sealed class PaginationOptions
 
     /// <summary>
     /// Maximum items per page (limit) a client can request for both offset
-    /// (<see cref="Pagination.OffsetQuery"/>) and cursor (<see cref="Pagination.CursorQuery"/>)
+    /// (<see cref="Pagination.DefaultOffsetQuery"/>) and cursor (<see cref="Pagination.DefaultCursorQuery"/>)
     /// pagination. Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
     /// Clamped to at least 1 by the consuming query types.
     /// </summary>

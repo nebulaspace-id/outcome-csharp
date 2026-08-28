@@ -14,7 +14,8 @@ public static class ProductEndpoints
 {
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/products");
+        var group = app.MapGroup("/products")
+            .WithTags("Minimal Api");
 
         // Ping — 200 with no payload, status-only envelope.
         group.MapGet("/ping", (IHttpResultFactory http) => http.Ok())
@@ -33,19 +34,13 @@ public static class ProductEndpoints
             service.GetProduct(id).ToResult(http, product => http.Ok(product)))
             .Produces<SuccessResponse<Product>>()
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
-        
-        // List (offset) — page/limit bound from the query string.
-        group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
+
+        // List (offset) — custom offset pagination. Page/limit bound from the query string.
+        group.MapGet("/", (IProductService service, [AsParameters] Shared.OffsetQuery query, IHttpResultFactory http) =>
             Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(page.Items, page.ToOffsetInfo(query))))
-            .Produces<SuccessResponse<Product[], OffsetInfo>>();
+            .Produces<SuccessResponse<Product[], Shared.OffsetInfo>>();
 
-        // List (keyset) — custom IPaginationDetails. Uses the product id as the
-        // opaque key; AfterKey = last id on the previous page (omit for first page).
-        group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page => http.Ok(page.Items, page.ToKeysetInfo())))
-            .Produces<SuccessResponse<Product[], KeysetInfo>>();
-
-        // List (cursor) — cursor/limit bound from the query string.
+        // List (cursor) — custom cursor pagination. Cursor/limit bound from the query string.
         group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
             Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(page.Items, page.ToCursorInfo(query))))
             .Produces<SuccessResponse<Product[], CursorInfo>>();

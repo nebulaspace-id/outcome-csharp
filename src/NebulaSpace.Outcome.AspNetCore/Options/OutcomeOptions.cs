@@ -41,8 +41,8 @@ public sealed class OutcomeOptions
 
     /// <summary>
     /// Pagination caps (<see cref="PaginationOptions.MaxPage"/>, <see cref="PaginationOptions.MaxLimit"/>)
-    /// copied to the static defaults on <see cref="Pagination.OffsetQuery"/> and
-    /// <see cref="Pagination.CursorQuery"/> at startup. Configurable via
+    /// copied to the static defaults on <see cref="Pagination.DefaultOffsetQuery"/> and
+    /// <see cref="Pagination.DefaultCursorQuery"/> at startup. Configurable via
     /// <c>options.Pagination.MaxPage/MaxLimit</c> in <c>AddOutcome</c>.
     /// </summary>
     public PaginationOptions Pagination { get; } = new();

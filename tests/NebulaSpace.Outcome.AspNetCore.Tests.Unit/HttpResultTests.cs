@@ -77,12 +77,12 @@ public class HttpResultTests
     [Fact]
     public async Task Ok_WithPagination_IncludesFullConcretePaginationInEnvelope()
     {
-        // 2‑param envelope so STJ serializes the full OffsetInfo shape,
+        // 2‑param envelope so STJ serializes the full DefaultOffsetInfo shape,
         // not just the IPaginationDetails interface members.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
 
-        var pagination = Pagination.OffsetInfo.Create(1, 10, 37);
+        var pagination = Pagination.DefaultOffsetInfo.Create(1, 10, 37);
         var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -98,12 +98,12 @@ public class HttpResultTests
     [Fact]
     public async Task Ok_WithCursorPagination_IncludesFullCursorInfoInEnvelope()
     {
-        // 2‑param envelope closes TPage with CursorInfo, so STJ sees
+        // 2‑param envelope closes TPage with DefaultCursorInfo, so STJ sees
         // NextCursor, PreviousCursor, HasMore, TotalItems — not just IPaginationDetails.
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
 
-        var cursorInfo = new Pagination.CursorInfo
+        var cursorInfo = new Pagination.DefaultCursorInfo
         {
             PreviousCursor = "prev-abc",
             NextCursor = "next-def",
@@ -156,7 +156,7 @@ public class HttpResultTests
         // DefaultSuccessResponse<TData, TPage>, never silently dropped.
         var factory = ResultTestHelper.CreateFactory(); // no SetResponse call
 
-        var pagination = Pagination.OffsetInfo.Create(2, 5, 42);
+        var pagination = Pagination.DefaultOffsetInfo.Create(2, 5, 42);
         var capture = await Execute(factory, factory.Ok(new[] { "a", "b" }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);

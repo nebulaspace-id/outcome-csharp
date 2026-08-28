@@ -1,13 +1,16 @@
-namespace NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
+
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
-/// Offset-pagination metadata sent in the response body — current page, items per page
-/// (<see cref="Limit"/>), total pages, and total items. Implements
-/// <see cref="IPaginationDetails"/> so the pipeline works with either offset or cursor
-/// pagination through one type.
+/// Custom offset-pagination metadata sent in the response body. Implements
+/// <see cref="IPaginationDetails"/> so the library resolves the concrete type at
+/// runtime and System.Text.Json / Swagger serialize the full shape — <c>page</c>,
+/// <c>limit</c>, <c>totalPages</c>, <c>totalItems</c>, and <c>hasMore</c>.
 ///
 /// <para>
-/// Use <see cref="Create(OffsetQuery,int)"/> from the service layer to construct it in one call.
+/// Build via <see cref="Create(OffsetQuery,int)"/> or <see cref="OffsetResult{T}.ToOffsetInfo"/>
+/// — one line from the endpoint.
 /// </para>
 /// </summary>
 public sealed class OffsetInfo : IPaginationDetails
@@ -47,7 +50,7 @@ public sealed class OffsetInfo : IPaginationDetails
     };
 
     /// <summary>
-    /// Creates <see cref="OffsetInfo"/> from a <see cref="OffsetQuery"/> and the total item
+    /// Creates <see cref="OffsetInfo"/> from an <see cref="OffsetQuery"/> and the total item
     /// count — the idiomatic one‑line call from the service layer.
     /// </summary>
     /// <param name="query">The incoming pagination request.</param>

@@ -2,12 +2,12 @@ using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
-public class CursorQueryTests
+public class DefaultCursorQueryTests
 {
     [Fact]
     public void Defaults_CursorNull_LimitTen()
     {
-        var query = new CursorQuery();
+        var query = new DefaultCursorQuery();
 
         Assert.Null(query.Cursor);
         Assert.Equal(10, query.Limit);
@@ -22,38 +22,38 @@ public class CursorQueryTests
     [InlineData(500, 50)] // clamped down to max
     public void Limit_ClampsToBounds(int value, int expected)
     {
-        var orig = CursorQuery.MaxLimit;
-        CursorQuery.MaxLimit = 50;
+        var orig = DefaultCursorQuery.MaxLimit;
+        DefaultCursorQuery.MaxLimit = 50;
         try
         {
-            var query = new CursorQuery { Limit = value };
+            var query = new DefaultCursorQuery { Limit = value };
             Assert.Equal(expected, query.Limit);
         }
-        finally { CursorQuery.MaxLimit = orig; }
+        finally { DefaultCursorQuery.MaxLimit = orig; }
     }
 
     [Fact]
     public void StaticMaxLimit_CanBeChangedForCustomCaps()
     {
-        var orig = CursorQuery.MaxLimit;
-        CursorQuery.MaxLimit = 100;
+        var orig = DefaultCursorQuery.MaxLimit;
+        DefaultCursorQuery.MaxLimit = 100;
 
         try
         {
-            var query = new CursorQuery { Limit = 999 };
+            var query = new DefaultCursorQuery { Limit = 999 };
 
             Assert.Equal(100, query.Limit);
         }
         finally
         {
-            CursorQuery.MaxLimit = orig;
+            DefaultCursorQuery.MaxLimit = orig;
         }
     }
 
     [Fact]
     public void Cursor_CanBeSetAndRead()
     {
-        var query = new CursorQuery { Cursor = "eyJsYXN0SWQiOiJhYmMtMjAifQ" };
+        var query = new DefaultCursorQuery { Cursor = "eyJsYXN0SWQiOiJhYmMtMjAifQ" };
 
         Assert.Equal("eyJsYXN0SWQiOiJhYmMtMjAifQ", query.Cursor);
     }
