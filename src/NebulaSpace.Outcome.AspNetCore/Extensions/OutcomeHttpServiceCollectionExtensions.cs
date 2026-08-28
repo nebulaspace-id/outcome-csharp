@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
@@ -50,16 +49,34 @@ public static class OutcomeHttpServiceCollectionExtensions
 
         // By default, discover every IPaginatedQuery implementor across loaded assemblies
         // (reflection) and let each one copy the app's pagination caps into its static fields —
-        // no wiring needed. For NativeAOT, set options.Pagination.ScanAssemblies = false and
-        // register query types explicitly with options.Pagination.RegisterQuery<TQuery>().
+        // no wiring needed. Set options.Pagination.ScanAssemblies = false and register query
+        // types explicitly with options.Pagination.RegisterQuery<TQuery>() to skip the scan.
         if (options.Pagination.ScanAssemblies)
         {
-            ConfigureQueriesByAssemblyScan(options);
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly.IsDynamic) continue;
+
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
+                catch { continue; }
+
+                foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
+                {
+                    var configureMethod = type.GetMethod(
+                        nameof(IPaginatedQuery.Configure),
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                        null, [typeof(PaginationOptions)], null);
+
+                    configureMethod?.Invoke(null, [options.Pagination]);
+                }
+            }
         }
 
-        // Explicit registrations (AOT-safe path) run regardless — Configure is dispatched
-        // through the static abstract interface member, no reflection. Idempotent with the
-        // scan above, so double registration is harmless.
+        // Explicit registrations run regardless — Configure is dispatched through the
+        // static abstract interface member, no reflection. Idempotent with the scan above,
+        // so double registration is harmless.
         foreach (var configureQuery in options.Pagination.QueryConfigurators)
         {
             configureQuery(options.Pagination);
@@ -72,37 +89,5 @@ public static class OutcomeHttpServiceCollectionExtensions
         services.AddTransient<OutcomeExceptionMiddleware>();
 
         return services;
-    }
-
-    /// <summary>
-    /// Reflection-based discovery of <c>IPaginatedQuery</c> implementors. Guarded by
-    /// <see cref="PaginationOptions.ScanAssemblies"/>: AOT apps disable the scan and register
-    /// query types explicitly (static interface dispatch), so this code never runs there.
-    /// </summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "Guarded by PaginationOptions.ScanAssemblies; AOT apps disable the scan and register query types explicitly.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2075",
-        Justification = "Same guard.")]
-    private static void ConfigureQueriesByAssemblyScan(OutcomeOptions options)
-    {
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (assembly.IsDynamic) continue;
-
-            Type[] types;
-            try { types = assembly.GetTypes(); }
-            catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t is not null).ToArray()!; }
-            catch { continue; }
-
-            foreach (var type in types.Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPaginatedQuery).IsAssignableFrom(t)))
-            {
-                var configureMethod = type.GetMethod(
-                    nameof(IPaginatedQuery.Configure),
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                    null, [typeof(PaginationOptions)], null);
-
-                configureMethod?.Invoke(null, [options.Pagination]);
-            }
-        }
     }
 }

@@ -5,7 +5,6 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/NebulaSpace.Outcome.Samples.WebApi/NebulaSpace.Outcome.Samples.WebApi.csproj" />
-    <Project Path="samples/NebulaSpace.Outcome.Samples.Aot/NebulaSpace.Outcome.Samples.Aot.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NebulaSpace.Outcome.Tests.Unit/NebulaSpace.Outcome.Tests.Unit.csproj" />

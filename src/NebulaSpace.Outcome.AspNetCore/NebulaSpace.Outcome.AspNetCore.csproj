@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <Version>0.5.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageSupportedTargetFramework Include="net7.0" />
         <PackageSupportedTargetFramework Include="net8.0" />
         <PackageSupportedTargetFramework Include="net9.0" />
         <PackageSupportedTargetFramework Include="net10.0" />

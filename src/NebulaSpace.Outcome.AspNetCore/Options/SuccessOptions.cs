@@ -97,7 +97,7 @@ public sealed class SuccessOptions
 
         Factory = factory;
         // The delegate is the single envelope for both paginated and non-paginated responses,
-        // so paginated requests route through it (AOT-safe) instead of the reflection fallback.
+        // so paginated requests route through it instead of the reflection fallback.
         PaginationFactory = factory;
     }
 

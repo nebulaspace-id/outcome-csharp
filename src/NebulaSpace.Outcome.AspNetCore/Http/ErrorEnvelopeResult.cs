@@ -41,7 +41,7 @@ public sealed class ErrorEnvelopeResult : IResult
 
         httpContext.Response.StatusCode = _details.StatusCode;
         // Cast to object so System.Text.Json serializes the runtime type's full shape.
-        await OutcomeJsonWriter.WriteAsync(httpContext, envelope, _options, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(envelope, cancellationToken);
     }
 
     /// <summary>Builds the default clean RFC 7807 problem response from a failure's intent.</summary>

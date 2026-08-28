@@ -17,8 +17,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 ///
 /// <para>
 /// Query types are configured either by assembly scanning (default, reflection-based) or,
-/// for NativeAOT, by explicit registration — see <see cref="ScanAssemblies"/> and
-/// <see cref="RegisterQuery{TQuery}"/>.
+/// when you prefer deterministic startup, by explicit registration — see
+/// <see cref="ScanAssemblies"/> and <see cref="RegisterQuery{TQuery}"/>.
 /// </para>
 /// </summary>
 /// <example>
@@ -53,9 +53,9 @@ public sealed class PaginationOptions
     /// custom query types are picked up automatically, no wiring needed.
     ///
     /// <para>
-    /// For NativeAOT, set this to <c>false</c> and register each query type explicitly with
-    /// <see cref="RegisterQuery{TQuery}"/>. That path calls <c>Configure</c> through static
-    /// interface dispatch — no reflection.
+    /// Set this to <c>false</c> and register each query type explicitly with
+    /// <see cref="RegisterQuery{TQuery}"/> to skip the scan — deterministic startup, no
+    /// reflection.
     /// </para>
     /// </summary>
     public bool ScanAssemblies { get; set; } = true;
@@ -64,7 +64,7 @@ public sealed class PaginationOptions
 
     /// <summary>
     /// Registers a pagination query type so <c>AddOutcome</c> calls its <c>Configure</c>
-    /// through static interface dispatch — no reflection. The AOT-safe alternative to
+    /// through static interface dispatch — no reflection. The explicit alternative to
     /// assembly scanning (see <see cref="ScanAssemblies"/>).
     ///
     /// <para>
@@ -85,7 +85,7 @@ public sealed class PaginationOptions
         => _queryConfigurators.Add(options => TQuery.Configure(options));
 
     /// <summary>
-    /// Explicitly registered query configurators (AOT-safe path). Run by <c>AddOutcome</c>
+    /// Explicitly registered query configurators. Run by <c>AddOutcome</c>
     /// after the optional assembly scan, for every query type registered via
     /// <see cref="RegisterQuery{TQuery}"/>.
     /// </summary>

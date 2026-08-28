@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -36,7 +35,7 @@ public sealed class SuccessEnvelopeResult : IResult
                 : new DefaultSuccessResponse { StatusCode = _statusCode };
 
         httpContext.Response.StatusCode = _statusCode;
-        await OutcomeJsonWriter.WriteAsync(httpContext, body, _options, httpContext.RequestAborted);
+        await httpContext.Response.WriteAsJsonAsync(body);
     }
 }
 
@@ -85,7 +84,7 @@ public sealed class SuccessEnvelopeResult<T> : IResult
 
         httpContext.Response.StatusCode = _statusCode;
         // Cast to object so System.Text.Json serializes the runtime type's full shape.
-        await OutcomeJsonWriter.WriteAsync(httpContext, body, _options, httpContext.RequestAborted);
+        await httpContext.Response.WriteAsJsonAsync(body);
     }
 
     private object BuildEnvelope(HttpContext httpContext)
@@ -101,16 +100,10 @@ public sealed class SuccessEnvelopeResult<T> : IResult
     }
 
     /// <summary>
-    /// Auto‑fallback for paginated responses when the user has not registered a pagination‑aware
-    /// envelope (2‑param type or the delegate overload) — resolves
-    /// <c>DefaultSuccessResponse&lt;TData, TPage&gt;</c> so pagination metadata is never silently
-    /// dropped. Reflection-based; unreachable in the AOT-safe path, because the delegate overload
-    /// sets <c>SuccessPaginationFactory</c> and paginated responses route through it instead.
+    /// Auto‑fallback for paginated responses when the user has not registered a 2‑param
+    /// envelope — resolves <c>DefaultSuccessResponse&lt;TData, TPage&gt;</c> so pagination
+    /// metadata is never silently dropped.
     /// </summary>
-    [UnconditionalSuppressMessage("AOT", "IL3050",
-        Justification = "Unreachable in the AOT-safe path: the delegate overload sets SuccessPaginationFactory, so paginated responses never reach this fallback.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2070",
-        Justification = "Same guard.")]
     private object BuildDefaultPaginated(T? data, IPaginationDetails pagination, HttpContext httpContext)
     {
         var dataType = data?.GetType() ?? typeof(T);

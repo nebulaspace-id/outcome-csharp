@@ -15,7 +15,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Mvc;
 /// When an action returns an <see cref="Outcome{T}"/> (directly or wrapped in
 /// <see cref="ObjectResult"/>), the filter resolves <see cref="IHttpResultFactory"/> from DI
 /// and maps success → <c>200 OK</c>, failure → the mapped error response. Dispatch goes
-/// through the <see cref="IOutcome"/> interface — no reflection, so it is NativeAOT-safe.
+/// through the <see cref="IOutcome"/> interface — no reflection.
 /// Non-<see cref="Outcome{T}"/> values pass through untouched.
 /// </para>
 /// </summary>
