@@ -53,21 +53,12 @@ public interface IHttpResultFactory
     IResult Ok<T>(T data, Pagination.IPaginationDetails pagination);
 
     /// <summary>
-    /// 201 Created with a <c>Location</c> header derived from the current request path
-    /// plus the new entity's id. The body is wrapped in the configured success envelope.
+    /// 201 Created with a manually specified <c>Location</c> header and response body.
+    /// Matches the standard ASP.NET Core <c>Results.Created(uri, value)</c> signature.
     /// </summary>
+    /// <param name="locationUri">The full <c>Location</c> header value (e.g. <c>"/products/42"</c>).</param>
     /// <param name="data">The new entity.</param>
-    /// <param name="idSelector">A function that extracts the id from the entity (e.g. <c>o => o.Id</c>).</param>
-    IResult Created<T>(T data, Func<T, object> idSelector);
-
-    /// <summary>
-    /// 201 Created with a manually specified <c>Location</c> header. Use when the
-    /// resource URI doesn't follow the <c>{requestPath}/{id}</c> convention — e.g.
-    /// nested routes, absolute URLs, or cross-resource references.
-    /// </summary>
-    /// <param name="data">The new entity.</param>
-    /// <param name="locationUri">The full <c>Location</c> header value (e.g. <c>"/orders/5/items/42"</c>).</param>
-    IResult Created<T>(T data, string locationUri);
+    IResult Created<T>(string locationUri, T data);
 
     /// <summary>204 No Content — no body, no envelope.</summary>
     IResult NoContent();

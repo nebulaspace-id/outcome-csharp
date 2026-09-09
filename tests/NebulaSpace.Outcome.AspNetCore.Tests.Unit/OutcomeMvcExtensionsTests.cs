@@ -140,7 +140,7 @@ public class OutcomeMvcExtensionsTests
         Outcome<Order> outcome = Outcome.Success(new Order(7));
 
         var capture = await ResultTestHelper.ExecuteActionResultAsync(
-            outcome.ToActionResult(factory, order => factory.Created(order, o => o.Id)),
+            outcome.ToActionResult(factory, order => factory.Created($"/orders/{order.Id}", order)),
             ctx => ctx.Request.Path = "/orders");
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);

@@ -180,51 +180,44 @@ public class HttpResultTests
     // --- Created ---
 
     [Fact]
-    public async Task Created_SetsLocationFromRequestPathAndId()
+    public async Task Created_SetsLocationFromProvidedUri()
     {
         var factory = ResultTestHelper.CreateFactory();
-        var order = new { Id = Guid.NewGuid() };
-        var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders");
+        var id = Guid.NewGuid();
+        var order = new { Id = id };
+        var capture = await Execute(factory, factory.Created($"/orders/{id}", order));
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
-        Assert.Equal($"/orders/{order.Id}", capture.Location);
+        Assert.Equal($"/orders/{id}", capture.Location);
     }
 
     [Fact]
     public async Task Created_WithEnvelope_WrapsDataInSuccessResponse()
     {
         var factory = ResultTestHelper.CreateFactory();
-        var order = new { Id = Guid.NewGuid() };
-        var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders");
+        var id = Guid.NewGuid();
+        var order = new { Id = id };
+        var capture = await Execute(factory, factory.Created($"/orders/{id}", order));
 
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.Equal(201, json.GetProperty("statusCode").GetInt32());
-        Assert.Equal(order.Id.ToString(), json.GetProperty("data").GetProperty("id").GetString());
+        Assert.Equal(id.ToString(), json.GetProperty("data").GetProperty("id").GetString());
     }
 
     [Fact]
     public async Task Created_WithEnvelopeDisabled_ReturnsRawData()
     {
         var factory = ResultTestHelper.CreateFactory(options => options.Success.Enabled = false);
-        var order = new { Id = Guid.NewGuid() };
+        var id = Guid.NewGuid();
+        var order = new { Id = id };
 
-        var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders");
+        var capture = await Execute(factory, factory.Created($"/orders/{id}", order));
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
-        Assert.Equal($"/orders/{order.Id}", capture.Location);
+        Assert.Equal($"/orders/{id}", capture.Location);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.Equal(order.Id.ToString(), json.GetProperty("id").GetString());
+        Assert.Equal(id.ToString(), json.GetProperty("id").GetString());
         Assert.False(json.TryGetProperty("data", out _));
-    }
-
-    [Fact]
-    public async Task Created_TrimsTrailingSlashOnPath()
-    {
-        var factory = ResultTestHelper.CreateFactory();
-        var order = new { Id = 5 };
-        var capture = await Execute(factory, factory.Created(order, o => o.Id), path: "/orders/");
-
-        Assert.Equal("/orders/5", capture.Location);
     }
 
     [Fact]
@@ -232,7 +225,7 @@ public class HttpResultTests
     {
         var factory = ResultTestHelper.CreateFactory();
         var order = new { Id = Guid.NewGuid() };
-        var capture = await Execute(factory, factory.Created(order, "/custom/orders/42"), path: "/orders");
+        var capture = await Execute(factory, factory.Created("/custom/orders/42", order));
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
         Assert.Equal("/custom/orders/42", capture.Location);

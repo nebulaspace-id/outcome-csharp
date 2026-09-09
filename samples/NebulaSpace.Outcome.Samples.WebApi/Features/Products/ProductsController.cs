@@ -43,7 +43,7 @@ public class ProductsController : ControllerBase
     [HttpPost]
     public Task<IActionResult> Create([FromBody] CreateProductRequest request) =>
         _service.CreateProduct(request)
-            .ToActionResultAsync(_http, product => _http.Created(product, p => p.Id));
+            .ToActionResultAsync(_http, product => _http.Created($"/products/{product.Id}", product));
 
     // ── Get one ──────────────────────────────────────────────────────────────
     // 404 becomes the error envelope automatically (filter pattern).

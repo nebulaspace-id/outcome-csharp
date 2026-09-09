@@ -67,7 +67,7 @@ public class SuccessEnvelopeTests
 
         var order = new { Id = Guid.NewGuid() };
         var capture = await ResultTestHelper.ExecuteAsync(
-            factory.Created(order, o => o.Id), ctx => ctx.Request.Path = "/orders");
+            factory.Created($"/orders/{order.Id}", order), ctx => ctx.Request.Path = "/orders");
 
         Assert.Equal(StatusCodes.Status201Created, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);

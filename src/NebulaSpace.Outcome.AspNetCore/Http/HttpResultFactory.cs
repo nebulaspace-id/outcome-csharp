@@ -48,12 +48,8 @@ public sealed class HttpResultFactory : IHttpResultFactory
         new SuccessEnvelopeResult<T>(data, pagination, statusCode, _options);
 
     /// <inheritdoc />
-    public IResult Created<T>(T data, Func<T, object> idSelector) =>
-        new CreatedResult<T>(data, idSelector, _options);
-
-    /// <inheritdoc />
-    public IResult Created<T>(T data, string locationUri) =>
-        new CreatedResult<T>(data, locationUri, _options);
+    public IResult Created<T>(string locationUri, T data) =>
+        new CreatedResult<T>(locationUri, data, _options);
 
     /// <inheritdoc />
     public IResult NoContent() =>

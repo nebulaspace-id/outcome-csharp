@@ -39,7 +39,7 @@ public class OutcomeActionResultTests
     public async Task Created_Result_Produces201WithLocation()
     {
         var factory = ResultTestHelper.CreateFactory();
-        var inner = factory.Created(new Order(42), o => o.Id);
+        var inner = factory.Created("/orders/42", new Order(42));
         var actionResult = new OutcomeActionResult(inner);
 
         var capture = await ResultTestHelper.ExecuteActionResultAsync(
