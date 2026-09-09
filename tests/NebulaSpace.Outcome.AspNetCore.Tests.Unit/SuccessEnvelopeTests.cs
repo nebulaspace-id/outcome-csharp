@@ -81,7 +81,7 @@ public class SuccessEnvelopeTests
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(AppSuccess<,>)));
 
-        var pagination = DefaultOffsetInfo.Create(page: 2, limit: 10, totalItems: 37);
+        var pagination = DefaultOffsetPagination.Create(page: 2, limit: 10, totalItems: 37);
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -102,7 +102,7 @@ public class SuccessEnvelopeTests
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(AppSuccess<,>)));
 
-        var cursorInfo = new DefaultCursorInfo
+        var cursorInfo = new DefaultCursorPagination
         {
             PreviousCursor = "prev-abc",
             NextCursor = "next-def",
@@ -213,7 +213,7 @@ public class SuccessEnvelopeTests
 
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(
             new[] { 1, 2 },
-            DefaultOffsetInfo.Create(page: 2, limit: 2, totalItems: 5)));
+            DefaultOffsetPagination.Create(page: 2, limit: 2, totalItems: 5)));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);

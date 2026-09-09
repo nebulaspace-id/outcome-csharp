@@ -9,11 +9,11 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <c>nextCursor</c>, <c>hasMore</c>, and <c>totalItems</c>.
 ///
 /// <para>
-/// Build via <see cref="Create{T}"/> or <see cref="CursorResult{T}.ToCursorInfo"/>
+/// Build via <see cref="Create{T}"/> or <see cref="CursorResult{T}.ToCursorPagination"/>
 /// — one line from the endpoint.
 /// </para>
 /// </summary>
-public sealed class CursorInfo : IPaginationDetails
+public sealed class CursorPagination : IPaginationDetails
 {
     /// <summary>
     /// Opaque cursor pointing to the previous page. <c>null</c> when this is the first
@@ -41,13 +41,12 @@ public sealed class CursorInfo : IPaginationDetails
     public long? TotalItems { get; set; }
 
     /// <summary>
-    /// Creates <see cref="CursorInfo"/> from the incoming query and the service's
+    /// Creates <see cref="CursorPagination"/> from the incoming query and the service's
     /// cursor-paginated result — the idiomatic one‑line call from the endpoint.
     /// </summary>
     /// <typeparam name="T">The type of each item in the page.</typeparam>
-    /// <param name="query">The incoming cursor-pagination request.</param>
     /// <param name="result">The service's cursor-paginated result.</param>
-    public static CursorInfo Create<T>(CursorQuery query, CursorResult<T> result) => new()
+    public static CursorPagination Create<T>(CursorResult<T> result) => new()
     {
         PreviousCursor = result.PreviousCursor,
         NextCursor = result.NextCursor,

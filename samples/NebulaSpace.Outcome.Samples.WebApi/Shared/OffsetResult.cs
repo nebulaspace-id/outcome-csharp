@@ -3,11 +3,11 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <summary>
 /// A single page of items together with the total count across all pages. The service
 /// returns this and the endpoint, which already has the incoming <see cref="OffsetQuery"/>,
-/// constructs the <see cref="OffsetInfo"/> metadata from it — separating the query intent
+/// constructs the <see cref="OffsetPagintion"/> metadata from it — separating the query intent
 /// (page/limit) from the raw data the service reports (items + count).
 ///
 /// <para>
-/// Use <see cref="ToOffsetInfo"/> to build the metadata from this result in one call.
+/// Use <see cref="ToOffsetPagination"/> to build the metadata from this result in one call.
 /// </para>
 /// </summary>
 /// <typeparam name="T">The type of each item in the page.</typeparam>
@@ -20,10 +20,10 @@ public sealed class OffsetResult<T>
     public long TotalCount { get; set; }
 
     /// <summary>
-    /// Builds <see cref="OffsetInfo"/> from this result and the incoming query —
+    /// Builds <see cref="OffsetPagintion"/> from this result and the incoming query —
     /// convenience over <c>OffsetInfo.Create(query, (int)TotalCount)</c>.
     /// </summary>
     /// <param name="query">The incoming offset-pagination request.</param>
-    public OffsetInfo ToOffsetInfo(OffsetQuery query) =>
-        OffsetInfo.Create(query, (int)TotalCount);
+    public OffsetPagintion ToOffsetPagination(OffsetQuery query) =>
+        OffsetPagintion.Create(query, (int)TotalCount);
 }

@@ -14,7 +14,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Models;
 ///
 /// For paginated responses, use a 2‑param generic implementing this interface so
 /// the second parameter carries the concrete pagination type
-/// (<see cref="Pagination.DefaultOffsetInfo"/> or <see cref="Pagination.DefaultCursorInfo"/>):
+/// (<see cref="DefaultOffsetPagination"/> or <see cref="DefaultCursorPagination"/>):
 /// <c>options.Success.SetResponse(typeof(ApiSuccess&lt;,&gt;))</c>.
 /// </para>
 /// </summary>
@@ -27,7 +27,7 @@ public interface ISuccessEnvelope<in T>
     /// <param name="data">The payload — already the closed <typeparamref name="T"/> at call time.</param>
     /// <param name="pagination">
     /// Pagination metadata when the response is paginated, else <c>null</c>.
-    /// Either <see cref="Pagination.DefaultOffsetInfo"/> (offset) or <see cref="Pagination.DefaultCursorInfo"/> (cursor).
+    /// Either <see cref="DefaultOffsetPagination"/> (offset) or <see cref="DefaultCursorPagination"/> (cursor).
     /// </param>
     /// <param name="httpContext">The current HTTP request.</param>
     /// <param name="statusCode">The HTTP status the response will use (<c>200</c> for <c>Ok</c>, <c>201</c> for <c>Created</c>).</param>

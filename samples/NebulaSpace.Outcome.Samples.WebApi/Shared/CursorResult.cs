@@ -3,12 +3,12 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <summary>
 /// A single page of items from a cursor-paginated query, together with opaque cursors for
 /// the previous and next pages. The service returns this and the endpoint, which already
-/// has the incoming <see cref="CursorQuery"/>, constructs the <see cref="CursorInfo"/>
+/// has the incoming <see cref="CursorQuery"/>, constructs the <see cref="CursorPagination"/>
 /// metadata from it — separating the query intent (cursor/limit) from the raw data the
 /// service reports (items + cursors + count).
 ///
 /// <para>
-/// Use <see cref="ToCursorInfo"/> to build the metadata from this result in one call.
+/// Use <see cref="ToCursorPagination"/> to build the metadata from this result in one call.
 /// </para>
 /// </summary>
 /// <typeparam name="T">The type of each item in the page.</typeparam>
@@ -38,10 +38,9 @@ public sealed class CursorResult<T>
     public long? TotalCount { get; set; }
 
     /// <summary>
-    /// Builds <see cref="CursorInfo"/> from this result and the incoming query —
+    /// Builds <see cref="CursorPagination"/> from this result and the incoming query —
     /// convenience over <c>CursorInfo.Create(query, result)</c>.
     /// </summary>
-    /// <param name="query">The incoming cursor-pagination request.</param>
-    public CursorInfo ToCursorInfo(CursorQuery query) =>
-        CursorInfo.Create(query, this);
+    public CursorPagination ToCursorPagination() =>
+        CursorPagination.Create(this);
 }

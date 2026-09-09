@@ -52,7 +52,7 @@ public sealed class DefaultSuccessResponse<T> : ISuccessEnvelope<T>
 /// <summary>
 /// The library's default envelope for a successful <b>paginated</b> operation.
 /// <typeparamref name="TPage"/> is the concrete pagination metadata type
-/// (<see cref="Pagination.DefaultOffsetInfo"/> or <see cref="Pagination.DefaultCursorInfo"/>),
+/// (<see cref="DefaultOffsetPagination"/> or <see cref="DefaultCursorPagination"/>),
 /// so System.Text.Json and Swagger serialize the full shape — not just the
 /// three <see cref="IPaginationDetails"/> members.
 ///
@@ -63,8 +63,8 @@ public sealed class DefaultSuccessResponse<T> : ISuccessEnvelope<T>
 /// </summary>
 /// <typeparam name="TData">The payload type.</typeparam>
 /// <typeparam name="TPage">
-/// The concrete pagination metadata type — either <see cref="Pagination.DefaultOffsetInfo"/>
-/// or <see cref="Pagination.DefaultCursorInfo"/>.
+/// The concrete pagination metadata type — either <see cref="DefaultOffsetPagination"/>
+/// or <see cref="DefaultCursorPagination"/>.
 /// </typeparam>
 public sealed class DefaultSuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
 {
@@ -75,8 +75,8 @@ public sealed class DefaultSuccessResponse<TData, TPage> : ISuccessEnvelope<TDat
     public TData? Data { get; set; }
 
     /// <summary>
-    /// Pagination metadata with the full concrete shape — <see cref="Pagination.DefaultOffsetInfo"/>
-    /// for offset responses, <see cref="Pagination.DefaultCursorInfo"/> for cursor responses.
+    /// Pagination metadata with the full concrete shape — <see cref="DefaultOffsetPagination"/>
+    /// for offset responses, <see cref="DefaultCursorPagination"/> for cursor responses.
     /// </summary>
     public TPage? Pagination { get; set; }
 

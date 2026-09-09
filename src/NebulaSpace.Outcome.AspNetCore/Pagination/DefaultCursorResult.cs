@@ -3,12 +3,12 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// <summary>
 /// A single page of items from a cursor-paginated query, together with opaque cursors for
 /// the previous and next pages. The service returns this and the endpoint, which already
-/// has the incoming <see cref="DefaultCursorQuery"/>, constructs the <see cref="DefaultCursorInfo"/>
+/// has the incoming <see cref="DefaultCursorQuery"/>, constructs the <see cref="DefaultCursorPagination"/>
 /// metadata from it — separating the query intent (cursor/limit) from the raw data the
 /// service reports (items + cursors + count).
 ///
 /// <para>
-/// Use <see cref="DefaultCursorInfo.Create{T}(DefaultCursorQuery, DefaultCursorResult{T})"/> to build the
+/// Use <see cref="DefaultCursorPagination.Create{T}(DefaultCursorQuery, DefaultCursorResult{T})"/> to build the
 /// metadata from this result in one call.
 /// </para>
 /// </summary>
@@ -39,10 +39,10 @@ public sealed class DefaultCursorResult<T>
     public long? TotalCount { get; set; }
 
     /// <summary>
-    /// Builds <see cref="DefaultCursorInfo"/> from this result and the incoming query —
+    /// Builds <see cref="DefaultCursorPagination"/> from this result and the incoming query —
     /// convenience over <c>DefaultCursorInfo.Create(query, result)</c>.
     /// </summary>
     /// <param name="query">The incoming cursor-pagination request.</param>
-    public DefaultCursorInfo ToCursorInfo(DefaultCursorQuery query) =>
-        DefaultCursorInfo.Create(query, this);
+    public DefaultCursorPagination ToCursorPagination(DefaultCursorQuery query) =>
+        DefaultCursorPagination.Create(query, this);
 }

@@ -10,7 +10,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// the incoming <see cref="DefaultCursorQuery"/> and the service's <see cref="DefaultCursorResult{T}"/>.
 /// </para>
 /// </summary>
-public sealed class DefaultCursorInfo : IPaginationDetails
+public sealed class DefaultCursorPagination : IPaginationDetails
 {
     /// <summary>
     /// Opaque cursor pointing to the previous page. <c>null</c> when this is the first
@@ -38,13 +38,13 @@ public sealed class DefaultCursorInfo : IPaginationDetails
     public long? TotalItems { get; set; }
 
     /// <summary>
-    /// Creates <see cref="DefaultCursorInfo"/> from the incoming query and the service's
+    /// Creates <see cref="DefaultCursorPagination"/> from the incoming query and the service's
     /// cursor-paginated result — the idiomatic one‑line call from the endpoint.
     /// </summary>
     /// <typeparam name="T">The type of each item in the page.</typeparam>
     /// <param name="query">The incoming cursor-pagination request.</param>
     /// <param name="result">The service's cursor-paginated result.</param>
-    public static DefaultCursorInfo Create<T>(DefaultCursorQuery query, DefaultCursorResult<T> result) => new()
+    public static DefaultCursorPagination Create<T>(DefaultCursorQuery query, DefaultCursorResult<T> result) => new()
     {
         PreviousCursor = result.PreviousCursor,
         NextCursor = result.NextCursor,

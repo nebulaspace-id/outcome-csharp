@@ -37,12 +37,12 @@ public static class ProductEndpoints
 
         // List (offset) — custom offset pagination. Page/limit bound from the query string.
         group.MapGet("/", (IProductService service, [AsParameters] Shared.OffsetQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(page.Items, page.ToOffsetInfo(query))))
+            Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(page.Items, page.ToOffsetPagination(query))))
             .Produces<SuccessResponse<Product[], Shared.OffsetPagintion>>();
 
         // List (cursor) — custom cursor pagination. Cursor/limit bound from the query string.
         group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(page.Items, page.ToCursorInfo(query))))
+            Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(page.Items, page.ToCursorPagination())))
             .Produces<SuccessResponse<Product[], CursorPagination>>();
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.

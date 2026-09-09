@@ -134,8 +134,8 @@ public sealed class SuccessOptions
     /// <para>
     /// When the type has <b>two</b> type parameters (e.g.
     /// <c>typeof(SuccessResponse&lt;,&gt;)</c>), the library closes the second parameter
-    /// with the concrete pagination type — <see cref="DefaultOffsetInfo"/> or
-    /// <see cref="DefaultCursorInfo"/> — so System.Text.Json and Swagger see the
+    /// with the concrete pagination type — <see cref="DefaultOffsetPagination"/> or
+    /// <see cref="DefaultCursorPagination"/> — so System.Text.Json and Swagger see the
     /// full pagination shape, not just the <see cref="IPaginationDetails"/> interface members.
     /// </para>
     ///

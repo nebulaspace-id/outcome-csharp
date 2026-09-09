@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
@@ -30,13 +31,13 @@ public interface IHttpResultFactory
 
     /// <summary>200 OK with a payload and offset-pagination metadata.</summary>
     /// <param name="data">The payload.</param>
-    /// <param name="offsetInfo">Pagination metadata built with <c>DefaultOffsetInfo.Create</c>.</param>
-    IResult Ok<T>(T data, Pagination.DefaultOffsetInfo offsetInfo);
+    /// <param name="offsetPagination">Pagination metadata built with <c>DefaultOffsetInfo.Create</c>.</param>
+    IResult Ok<T>(T data, Pagination.DefaultOffsetPagination offsetPagination);
 
     /// <summary>200 OK with a payload and cursor-pagination metadata.</summary>
     /// <param name="data">The payload.</param>
-    /// <param name="cursorInfo">Pagination metadata built with <c>DefaultCursorInfo.Create</c>.</param>
-    IResult Ok<T>(T data, Pagination.DefaultCursorInfo cursorInfo);
+    /// <param name="cursorPagination">Pagination metadata built with <c>DefaultCursorInfo.Create</c>.</param>
+    IResult Ok<T>(T data, Pagination.DefaultCursorPagination cursorPagination);
 
     /// <summary>
     /// 200 OK with a payload and <em>any</em> pagination metadata implementing
@@ -46,8 +47,8 @@ public interface IHttpResultFactory
     /// </summary>
     /// <param name="data">The payload.</param>
     /// <param name="pagination">
-    /// Pagination metadata — <see cref="Pagination.DefaultOffsetInfo"/>,
-    /// <see cref="Pagination.DefaultCursorInfo"/>, or any custom type implementing
+    /// Pagination metadata — <see cref="DefaultOffsetPagination"/>,
+    /// <see cref="DefaultCursorPagination"/>, or any custom type implementing
     /// <see cref="Pagination.IPaginationDetails"/>.
     /// </param>
     IResult Ok<T>(T data, Pagination.IPaginationDetails pagination);

@@ -69,7 +69,7 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 /// </summary>
 /// <typeparam name="TData">The payload type.</typeparam>
 /// <typeparam name="TPage">
-/// Concrete pagination type — <see cref="OffsetInfo"/>, <see cref="CursorInfo"/>, or custom.
+/// Concrete pagination type — <see cref="OffsetPagintion"/>, <see cref="CursorPagination"/>, or custom.
 /// </typeparam>
 public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
 {

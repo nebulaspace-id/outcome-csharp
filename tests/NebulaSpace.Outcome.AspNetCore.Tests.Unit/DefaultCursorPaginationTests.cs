@@ -2,7 +2,7 @@ using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 
-public class DefaultCursorInfoTests
+public class DefaultCursorPaginationTests
 {
     [Fact]
     public void Create_CopiesCursorsFromResult()
@@ -15,7 +15,7 @@ public class DefaultCursorInfoTests
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.Equal("prev-page", info.PreviousCursor);
         Assert.Equal("next-page", info.NextCursor);
@@ -33,7 +33,7 @@ public class DefaultCursorInfoTests
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.Null(info.PreviousCursor);
         Assert.Equal("next-page", info.NextCursor);
@@ -50,7 +50,7 @@ public class DefaultCursorInfoTests
             NextCursor = null,
             TotalCount = 37,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.Null(info.NextCursor);
         Assert.False(info.HasMore);
@@ -66,7 +66,7 @@ public class DefaultCursorInfoTests
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.True(info.HasMore);
     }
@@ -81,7 +81,7 @@ public class DefaultCursorInfoTests
             NextCursor = "next-page",
             TotalCount = null,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.Null(info.TotalItems);
     }
@@ -96,7 +96,7 @@ public class DefaultCursorInfoTests
             NextCursor = "next-page",
             TotalCount = 10,
         };
-        var info = DefaultCursorInfo.Create(query, result);
+        var info = DefaultCursorPagination.Create(query, result);
 
         Assert.IsAssignableFrom<IPaginationDetails>(info);
     }

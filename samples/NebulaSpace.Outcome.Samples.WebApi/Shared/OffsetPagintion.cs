@@ -9,11 +9,11 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <c>limit</c>, <c>totalPages</c>, <c>totalItems</c>, and <c>hasMore</c>.
 ///
 /// <para>
-/// Build via <see cref="Create(OffsetQuery,int)"/> or <see cref="OffsetResult{T}.ToOffsetInfo"/>
+/// Build via <see cref="Create(OffsetQuery,int)"/> or <see cref="OffsetResult{T}.ToOffsetPagination"/>
 /// — one line from the endpoint.
 /// </para>
 /// </summary>
-public sealed class OffsetInfo : IPaginationDetails
+public sealed class OffsetPagintion : IPaginationDetails
 {
     /// <summary>
     /// Whether there is at least one more page after this one,
@@ -37,11 +37,11 @@ public sealed class OffsetInfo : IPaginationDetails
     public long? TotalItems { get; set; }
 
     /// <summary>
-    /// Creates <see cref="OffsetInfo"/> from raw pagination values, computing
+    /// Creates <see cref="OffsetPagintion"/> from raw pagination values, computing
     /// <see cref="TotalPages"/> from <paramref name="totalItems"/> and
     /// <paramref name="limit"/>.
     /// </summary>
-    public static OffsetInfo Create(int page, int limit, int totalItems) => new()
+    public static OffsetPagintion Create(int page, int limit, int totalItems) => new()
     {
         Page = page,
         Limit = limit,
@@ -50,11 +50,11 @@ public sealed class OffsetInfo : IPaginationDetails
     };
 
     /// <summary>
-    /// Creates <see cref="OffsetInfo"/> from an <see cref="OffsetQuery"/> and the total item
+    /// Creates <see cref="OffsetPagintion"/> from an <see cref="OffsetQuery"/> and the total item
     /// count — the idiomatic one‑line call from the service layer.
     /// </summary>
     /// <param name="query">The incoming pagination request.</param>
     /// <param name="totalItems">Total number of items across all pages.</param>
-    public static OffsetInfo Create(OffsetQuery query, int totalItems) =>
+    public static OffsetPagintion Create(OffsetQuery query, int totalItems) =>
         Create(query.Page, query.Limit, totalItems);
 }

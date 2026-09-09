@@ -10,7 +10,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// Use <see cref="Create(DefaultOffsetQuery,int)"/> from the service layer to construct it in one call.
 /// </para>
 /// </summary>
-public sealed class DefaultOffsetInfo : IPaginationDetails
+public sealed class DefaultOffsetPagination : IPaginationDetails
 {
     /// <summary>
     /// Whether there is at least one more page after this one,
@@ -34,11 +34,11 @@ public sealed class DefaultOffsetInfo : IPaginationDetails
     public long? TotalItems { get; set; }
 
     /// <summary>
-    /// Creates <see cref="DefaultOffsetInfo"/> from raw pagination values, computing
+    /// Creates <see cref="DefaultOffsetPagination"/> from raw pagination values, computing
     /// <see cref="TotalPages"/> from <paramref name="totalItems"/> and
     /// <paramref name="limit"/>.
     /// </summary>
-    public static DefaultOffsetInfo Create(int page, int limit, int totalItems) => new()
+    public static DefaultOffsetPagination Create(int page, int limit, int totalItems) => new()
     {
         Page = page,
         Limit = limit,
@@ -47,11 +47,11 @@ public sealed class DefaultOffsetInfo : IPaginationDetails
     };
 
     /// <summary>
-    /// Creates <see cref="DefaultOffsetInfo"/> from a <see cref="DefaultOffsetQuery"/> and the total item
+    /// Creates <see cref="DefaultOffsetPagination"/> from a <see cref="DefaultOffsetQuery"/> and the total item
     /// count — the idiomatic one‑line call from the service layer.
     /// </summary>
     /// <param name="query">The incoming pagination request.</param>
     /// <param name="totalItems">Total number of items across all pages.</param>
-    public static DefaultOffsetInfo Create(DefaultOffsetQuery query, int totalItems) =>
+    public static DefaultOffsetPagination Create(DefaultOffsetQuery query, int totalItems) =>
         Create(query.Page, query.Limit, totalItems);
 }

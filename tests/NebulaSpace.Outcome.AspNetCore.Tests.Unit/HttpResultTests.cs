@@ -82,7 +82,7 @@ public class HttpResultTests
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
 
-        var pagination = Pagination.DefaultOffsetInfo.Create(1, 10, 37);
+        var pagination = Pagination.DefaultOffsetPagination.Create(1, 10, 37);
         var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
@@ -103,7 +103,7 @@ public class HttpResultTests
         var factory = ResultTestHelper.CreateFactory(options =>
             options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
 
-        var cursorInfo = new Pagination.DefaultCursorInfo
+        var cursorInfo = new Pagination.DefaultCursorPagination
         {
             PreviousCursor = "prev-abc",
             NextCursor = "next-def",
@@ -156,7 +156,7 @@ public class HttpResultTests
         // DefaultSuccessResponse<TData, TPage>, never silently dropped.
         var factory = ResultTestHelper.CreateFactory(); // no SetResponse call
 
-        var pagination = Pagination.DefaultOffsetInfo.Create(2, 5, 42);
+        var pagination = Pagination.DefaultOffsetPagination.Create(2, 5, 42);
         var capture = await Execute(factory, factory.Ok(new[] { "a", "b" }, pagination));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);

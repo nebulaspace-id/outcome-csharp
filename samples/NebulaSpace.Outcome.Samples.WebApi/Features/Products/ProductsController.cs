@@ -60,7 +60,7 @@ public class ProductsController : ControllerBase
     {
         var result = _service.GetProducts(query);
         return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetInfo(query)));
+            .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetPagination(query)));
     }
 
     // ── List (cursor) ───────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ public class ProductsController : ControllerBase
     {
         var result = _service.GetProductsCursor(query);
         return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(items, result.ToCursorInfo(query)));
+            .ToActionResult(_http, items => _http.Ok(items, result.ToCursorPagination()));
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────
