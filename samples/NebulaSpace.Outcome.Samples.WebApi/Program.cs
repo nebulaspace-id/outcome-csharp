@@ -96,10 +96,6 @@ builder.Services.AddOutcome(options =>
     // Non-generic — responses with no payload (http.Ok() with no arguments).
     options.Success.SetResponse(typeof(SuccessResponse));
 
-    // Pagination caps.
-    options.Pagination.MaxPage = 25;
-    options.Pagination.MaxLimit = 50;
-
     // Error envelope — compile-time safe (IErrorEnvelope is non-generic).
     options.Error.SetResponse<ErrorResponse>();
 

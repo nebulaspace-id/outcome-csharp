@@ -39,14 +39,6 @@ public sealed class OutcomeOptions
     /// </summary>
     public ErrorOptions Error { get; } = new();
 
-    /// <summary>
-    /// Pagination caps (<see cref="PaginationOptions.MaxPage"/>, <see cref="PaginationOptions.MaxLimit"/>)
-    /// copied to the static defaults on <see cref="Pagination.DefaultOffsetQuery"/> and
-    /// <see cref="Pagination.DefaultCursorQuery"/> at startup. Configurable via
-    /// <c>options.Pagination.MaxPage/MaxLimit</c> in <c>AddOutcome</c>.
-    /// </summary>
-    public PaginationOptions Pagination { get; } = new();
-
     // ── Internal facades for the rest of the library ──────────────────
 
     internal Func<object?, IPaginationDetails?, HttpContext, int, object>? SuccessFactory =>

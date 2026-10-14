@@ -5,44 +5,30 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// <summary>
 /// Incoming offset-pagination parameters. Bound from the query string with
 /// <c>[AsParameters]</c>.
+///
+/// <para>
+/// There are no built-in caps — <see cref="Page"/> and <see cref="Limit"/>
+/// are only clamped to a minimum of 1. If you need maximum bounds,
+/// implement them in your own query type.
+/// </para>
 /// </summary>
 public sealed class DefaultOffsetQuery : IPaginatedQuery
 {
-    /// <summary>
-    /// Maximum page number. Set from <c>options.Pagination.MaxPage</c> at startup.
-    /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
-    /// </summary>
-    /// <remarks>
-    /// A <b>field</b>, not a settable property: a <c>public static</c> property with a public
-    /// setter makes ASP.NET Core's <c>RequestDelegateFactory</c> try to bind it as a query
-    /// parameter and emit invalid IL (<see cref="System.InvalidProgramException"/>).
-    /// </remarks>
-    public static int MaxPage = int.MaxValue;
-
-    /// <summary>
-    /// Maximum items per page. Set from <c>options.Pagination.MaxLimit</c> at startup.
-    /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
-    /// </summary>
-    /// <remarks>
-    /// A <b>field</b>, not a settable property — see <see cref="MaxPage"/>.
-    /// </remarks>
-    public static int MaxLimit = int.MaxValue;
-
     private int _page = 1;
     private int _limit = 10;
 
-    /// <summary>1-based page number, clamped to <c>1..MaxPage</c>.</summary>
+    /// <summary>1-based page number, clamped to a minimum of 1.</summary>
     public int Page
     {
         get => _page;
-        set => _page = Math.Clamp(value, 1, MaxPage);
+        set => _page = Math.Max(1, value);
     }
 
-    /// <summary>Items per page, clamped to <c>1..MaxLimit</c>.</summary>
+    /// <summary>Items per page, clamped to a minimum of 1.</summary>
     public int Limit
     {
         get => _limit;
-        set => _limit = Math.Clamp(value, 1, MaxLimit);
+        set => _limit = Math.Max(1, value);
     }
 
     /// <summary>
@@ -50,11 +36,4 @@ public sealed class DefaultOffsetQuery : IPaginatedQuery
     /// </summary>
     [BindNever]
     public int Offset => (Page - 1) * Limit;
-
-    /// <inheritdoc />
-    public static void Configure(Options.PaginationOptions options)
-    {
-        MaxPage  = Math.Max(1, options.MaxPage);
-        MaxLimit = Math.Max(1, options.MaxLimit);
-    }
 }

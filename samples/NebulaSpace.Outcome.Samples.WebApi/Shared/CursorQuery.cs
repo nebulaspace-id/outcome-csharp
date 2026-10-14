@@ -1,4 +1,3 @@
-using NebulaSpace.Outcome.AspNetCore.Options;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
@@ -9,29 +8,25 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// not the library's built-in <c>DefaultCursorQuery</c>.
 ///
 /// <para>
-/// Demonstrates how users can build their own cursor pagination query with
-/// app-specific caps and naming while still leveraging the library's
-/// <see cref="IPaginatedQuery"/> auto-discovery for <see cref="PaginationOptions"/>
-/// propagation.
+/// Demonstrates how users can build their own cursor pagination query with an
+/// app-specific cap. The bound is written directly on this type as a
+/// <b>static field</b> — there is no options plumbing to configure it.
 /// </para>
 /// </summary>
 public sealed class CursorQuery : IPaginatedQuery
 {
-    /// <summary>
-    /// Maximum items per page. Set from <c>options.Pagination.MaxLimit</c> at startup.
-    /// Default <see cref="int.MaxValue"/> — uncapped unless the app sets a value.
-    /// </summary>
+    /// <summary>Maximum items per page a client can request.</summary>
     /// <remarks>
-    /// A <b>field</b>, not a settable property — see <see cref="DefaultCursorQuery.MaxLimit"/>.
+    /// A <b>field</b>, not a settable property — see <see cref="DefaultCursorQuery"/>.
     /// </remarks>
-    public static int MaxLimit = int.MaxValue;
+    public static int MaxLimit = 50;
 
     private string? _cursor;
     private int _limit = 10;
 
     /// <summary>
-    /// Parameterless constructor for <c>[AsParameters]</c> binding — applies the static
-    /// default.
+    /// Parameterless constructor for <c>[AsParameters]</c> binding — applies the
+    /// default limit.
     /// </summary>
     public CursorQuery() { }
 
@@ -51,11 +46,5 @@ public sealed class CursorQuery : IPaginatedQuery
     {
         get => _limit;
         set => _limit = Math.Clamp(value, 1, MaxLimit);
-    }
-
-    /// <inheritdoc />
-    public static void Configure(PaginationOptions options)
-    {
-        MaxLimit = Math.Max(1, options.MaxLimit);
     }
 }

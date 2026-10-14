@@ -40,10 +40,6 @@ builder.Services.AddOutcome(options =>
     // Error envelope
     options.Error.SetResponse<ErrorResponse>();
 
-    // Pagination caps
-    options.Pagination.MaxPage = 25;
-    options.Pagination.MaxLimit = 50;
-
     // Map app-defined failures to HTTP intent
     options.Error.MapFailure<QuotaExceededFailure>(f =>
         new FailureDetails(StatusCodes.Status422UnprocessableEntity, f.Message, f.Code));
@@ -412,8 +408,8 @@ Subclasses inherit their nearest registered base's mapping.
 > **Recommendation:** define your own pagination types. The library ships with
 > `Default*` reference implementations for convenience, but most apps want
 > query shapes and metadata tuned to their domain (keyset, hybrid, opaque
-> cursors, GraphQL-style connections, etc.). Implement the two interfaces
-> below and `AddOutcome` will discover and configure them automatically.
+> cursors, GraphQL-style connections, etc.). Implement the two marker
+> interfaces below and set your caps as static fields on the query type.
 
 ### Prerequisites — the two interfaces
 
@@ -425,36 +421,33 @@ A custom pagination strategy is three types:
 | Result | Returned from the service, carries the data the service actually produced | _none — plain DTO_ |
 | Info | Metadata describing the page; serialized as the second generic parameter of the success envelope | `IPaginationDetails` |
 
-The two interfaces are tiny. `IPaginatedQuery` has one static-abstract member,
-`Configure`; `IPaginationDetails` is an empty marker:
+The two interfaces are tiny. `IPaginatedQuery` is an empty marker and
+`IPaginationDetails` is an empty marker:
 
 ```csharp
-public interface IPaginatedQuery
-{
-    static abstract void Configure(PaginationOptions options);
-}
+public interface IPaginatedQuery { }
 
 public interface IPaginationDetails { }
 ```
 
-The interface does not enforce limits. Your query type owns its caps as **static
-fields** (`MaxPage`, `MaxLimit`) plus a `Limit` property that clamps into them.
-`Configure` copies the app's caps from `PaginationOptions` into those fields.
-`AddOutcome` discovers every non-abstract `IPaginatedQuery` implementor across
-loaded assemblies and calls `Configure` once at startup.
+Neither interface enforces limits. The built-in queries clamp `Page`/`Limit` to a
+minimum of 1 only — there are no caps. If you need maximum bounds, add them to
+your own query type (e.g. a `<c>MaxLimit</c> field or constant used in the
+`Limit` setter).
 
 ### Configuring Limits
 
-```csharp
-options.Pagination.MaxPage = 25;    // max page number for offset-style queries
-options.Pagination.MaxLimit = 50;   // ceiling for every query type's Limit
-```
+There is nothing to configure at startup — `AddOutcome` has no pagination options.
+Bounds are your query type's business:
 
-Defaults are `int.MaxValue` (uncapped). Caps live on **static fields** of each
-query type (not properties — ASP.NET Core's `RequestDelegateFactory` would bind
-`public static` properties on `[AsParameters]` types as query parameters and emit
-invalid IL). `AddOutcome` runs your `Configure` for you, so the fields pick up the
-app's caps automatically.
+```csharp
+public sealed class KeysetQuery : IPaginatedQuery
+{
+    private const int MaxLimit = 50;
+    private int _limit = 10;
+    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
+}
+```
 
 ### Custom Pagination (recommended)
 
@@ -466,12 +459,10 @@ the client:
 // Query — implements IPaginatedQuery
 public sealed class KeysetQuery : IPaginatedQuery
 {
-    public static int MaxLimit = 50;
+    private const int MaxLimit = 50;
     private int _limit = 10;
     public string? AfterKey { get; set; }
     public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
-    public static void Configure(PaginationOptions options) =>
-        MaxLimit = Math.Max(1, options.MaxLimit);
 }
 
 // Result — plain DTO returned by the service

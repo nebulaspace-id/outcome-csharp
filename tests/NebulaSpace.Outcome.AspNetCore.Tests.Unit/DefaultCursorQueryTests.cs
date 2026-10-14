@@ -16,38 +16,14 @@ public class DefaultCursorQueryTests
     [Theory]
     [InlineData(1, 1)]
     [InlineData(50, 50)]
-    [InlineData(0, 1)]    // clamped up to min
-    [InlineData(-1, 1)]   // clamped up to min
-    [InlineData(51, 50)]  // clamped down to max
-    [InlineData(500, 50)] // clamped down to max
-    public void Limit_ClampsToBounds(int value, int expected)
+    [InlineData(500, 500)]  // no cap
+    [InlineData(0, 1)]      // clamped up to min
+    [InlineData(-1, 1)]     // clamped up to min
+    public void Limit_ClampsToMinimum(int value, int expected)
     {
-        var orig = DefaultCursorQuery.MaxLimit;
-        DefaultCursorQuery.MaxLimit = 50;
-        try
-        {
-            var query = new DefaultCursorQuery { Limit = value };
-            Assert.Equal(expected, query.Limit);
-        }
-        finally { DefaultCursorQuery.MaxLimit = orig; }
-    }
+        var query = new DefaultCursorQuery { Limit = value };
 
-    [Fact]
-    public void StaticMaxLimit_CanBeChangedForCustomCaps()
-    {
-        var orig = DefaultCursorQuery.MaxLimit;
-        DefaultCursorQuery.MaxLimit = 100;
-
-        try
-        {
-            var query = new DefaultCursorQuery { Limit = 999 };
-
-            Assert.Equal(100, query.Limit);
-        }
-        finally
-        {
-            DefaultCursorQuery.MaxLimit = orig;
-        }
+        Assert.Equal(expected, query.Limit);
     }
 
     [Fact]
