@@ -151,12 +151,7 @@ public sealed class SuccessResponse
 
 ### Pagination types
 
-Build your own query, result, and info types for each strategy. Each example below shows all three.
-
-```csharp
-options.Pagination.MaxPage = 25;    // offset max page
-options.Pagination.MaxLimit = 50;   // both strategies
-```
+Build your own query, result, and info types for each strategy. The library ships no pagination caps — the examples below show all three.
 
 Example — custom offset pagination:
 
@@ -164,21 +159,12 @@ Example — custom offset pagination:
 // 1. Query — bound from query string via [AsParameters]
 public sealed class OffsetQuery : IPaginatedQuery
 {
-    public static int MaxPage = int.MaxValue;
-    public static int MaxLimit = int.MaxValue;
-
     private int _page = 1;
     private int _limit = 10;
 
-    public int Page  { get => _page;  set => _page  = Math.Clamp(value, 1, MaxPage); }
-    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
+    public int Page  { get => _page;  set => _page  = Math.Max(1, value); }
+    public int Limit { get => _limit; set => _limit = Math.Max(1, value); }
     public int Offset => (Page - 1) * Limit;
-
-    public static void Configure(PaginationOptions options)
-    {
-        MaxPage  = Math.Max(1, options.MaxPage);
-        MaxLimit = Math.Max(1, options.MaxLimit);
-    }
 }
 
 // 2. Result — returned by the service layer
@@ -221,14 +207,11 @@ Example — custom cursor pagination:
 // 1. Query
 public sealed class CursorQuery : IPaginatedQuery
 {
-    public static int MaxLimit = int.MaxValue;
+    private string? _cursor;
     private int _limit = 10;
 
     public string? Cursor { get; set; }
-    public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
-
-    public static void Configure(PaginationOptions options) =>
-        MaxLimit = Math.Max(1, options.MaxLimit);
+    public int Limit { get => _limit; set => _limit = Math.Max(1, value); }
 }
 
 // 2. Result — service returns this with opaque cursors
@@ -309,6 +292,22 @@ await outcomeTask.ToActionResultAsync(http, order => http.Ok(order));
 // Failure only
 failure.ToErrorResponse(http);
 ```
+
+### Manual Match (alternative)
+
+If you prefer full control over both branches without extension methods:
+
+```csharp
+app.MapGet("/", (IProductService service, IHttpResultFactory http) =>
+{
+    var result = service.GetProducts();
+    return result.Match(
+        onSuccess: page => http.Ok(page.Items),
+        onFailure: failure => failure.ToErrorResponse(http));
+});
+```
+
+This is equivalent to `result.ToResult(http, page => http.Ok(page.Items))` — choose whichever reads clearer in context.
 
 ---
 
