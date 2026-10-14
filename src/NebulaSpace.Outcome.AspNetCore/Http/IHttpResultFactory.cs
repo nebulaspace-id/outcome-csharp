@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
@@ -29,29 +28,25 @@ public interface IHttpResultFactory
     /// <param name="data">The payload. Pass <c>default</c> for a <c>Unit</c> response.</param>
     IResult Ok<T>(T? data = default);
 
-    /// <summary>200 OK with a payload and offset-pagination metadata.</summary>
-    /// <param name="data">The payload.</param>
-    /// <param name="offsetPagination">Pagination metadata built with <c>DefaultOffsetInfo.Create</c>.</param>
-    IResult Ok<T>(T data, Pagination.DefaultOffsetPagination offsetPagination);
-
-    /// <summary>200 OK with a payload and cursor-pagination metadata.</summary>
-    /// <param name="data">The payload.</param>
-    /// <param name="cursorPagination">Pagination metadata built with <c>DefaultCursorInfo.Create</c>.</param>
-    IResult Ok<T>(T data, Pagination.DefaultCursorPagination cursorPagination);
-
     /// <summary>
-    /// 200 OK with a payload and <em>any</em> pagination metadata implementing
-    /// <see cref="Pagination.IPaginationDetails"/>. Use this for custom pagination types
-    /// (keyset, time‑based, etc.) — the pipeline resolves the concrete type at runtime so
-    /// <c>System.Text.Json</c> and Swagger serialize the full shape.
+    /// 200 OK with a payload and the app's own response <b>metadata</b> — wrapped in
+    /// the configured success envelope. The metadata is the app's business: build
+    /// the object in the endpoint (pagination, timestamps, links, request ids, …)
+    /// and pass it here. The library never inspects it and carries it as
+    /// <see cref="object"/>, so System.Text.Json serializes its runtime type's
+    /// full shape.
+    ///
+    /// <para>
+    /// Because <typeparamref name="T"/> is inferred, the call site reads
+    /// <c>http.Ok(items, meta)</c>.
+    /// </para>
     /// </summary>
     /// <param name="data">The payload.</param>
-    /// <param name="pagination">
-    /// Pagination metadata — <see cref="DefaultOffsetPagination"/>,
-    /// <see cref="DefaultCursorPagination"/>, or any custom type implementing
-    /// <see cref="Pagination.IPaginationDetails"/>.
+    /// <param name="meta">
+    /// The response metadata to attach. For a paginated response, the meta object
+    /// typically holds a pagination object as one of its properties.
     /// </param>
-    IResult Ok<T>(T data, Pagination.IPaginationDetails pagination);
+    IResult Ok<T>(T data, object? meta);
 
     /// <summary>
     /// 201 Created with a manually specified <c>Location</c> header and response body.

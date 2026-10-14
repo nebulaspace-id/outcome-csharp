@@ -1,6 +1,6 @@
+using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
 using NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
@@ -29,21 +29,32 @@ public static class ProductEndpoints
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status409Conflict);
 
-        // Get one — 404 becomes the error envelope automatically.
-        group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
-            service.GetProduct(id).ToResult(http, product => http.Ok(product)))
+        // Get one — 404 becomes the error envelope automatically. Non-paged metadata
+        // (timestamp + traceId) rides along; no SetPagination call, so no pagination.
+        group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http, HttpContext context) =>
+            service.GetProduct(id).ToResult(http, product => http.Ok(product, Meta.Builder(context).Build())))
             .Produces<SuccessResponse<Product>>()
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 
         // List (offset) — custom offset pagination. Page/limit bound from the query string.
-        group.MapGet("/", (IProductService service, [AsParameters] Shared.OffsetQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(page.Items, page.ToOffsetPagination(query))))
-            .Produces<SuccessResponse<Product[], Shared.OffsetPagintion>>();
+        // The endpoint builds the app's meta (pagination + per-request fields); the
+        // library only carries it into the envelope.
+        group.MapGet("/", (IProductService service, [AsParameters] Shared.OffsetQuery query, IHttpResultFactory http, HttpContext context) =>
+            Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(
+                page.Items,
+                Meta.Builder(context)
+                    .SetPagination(page.ToOffsetPagination(query))
+                    .Build())))
+            .Produces<SuccessResponse<Product[]>>();
 
         // List (cursor) — custom cursor pagination. Cursor/limit bound from the query string.
-        group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(page.Items, page.ToCursorPagination())))
-            .Produces<SuccessResponse<Product[], CursorPagination>>();
+        group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http, HttpContext context) =>
+            Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(
+                page.Items,
+                Meta.Builder(context)
+                    .SetPagination(page.ToCursorPagination())
+                    .Build())))
+            .Produces<SuccessResponse<Product[]>>();
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>

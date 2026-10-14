@@ -33,8 +33,7 @@ using NebulaSpace.Outcome.AspNetCore.Options;
 builder.Services.AddOutcome(options =>
 {
     // Success envelopes
-    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated (open-generic)
-    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated (open-generic)
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // typed, with optional meta (open-generic)
     options.Success.SetResponse(typeof(SuccessResponse));      // no-payload (non-generic, http.Ok())
 
     // Error envelope
@@ -121,7 +120,7 @@ group.MapGet("/{id}", (Guid id, IOrderService service, IHttpResultFactory http) 
 | --- | --- |
 | `http.Ok()` | 200 with no payload (status-only envelope) |
 | `http.Ok(data)` | 200, raw or wrapped per `Success.Enabled` |
-| `http.Ok(data, pagination)` | 200 with pagination metadata |
+| `http.Ok(data, meta)` | 200 with the app's response metadata |
 | `http.Created(data, idSelector)` | 201 with `Location` derived from request path |
 | `http.Created(data, locationUri)` | 201 with a manually specified `Location` |
 | `http.NoContent()` | 204 |
@@ -289,45 +288,34 @@ Without `SetResponse`, the default is RFC 7807 `DefaultProblemDetails` with only
 
 ### Success Envelope (`ISuccessEnvelope<T>`)
 
-**Non-paginated (1-param generic):**
+**Typed (1-param generic), with optional metadata:**
 
 ```csharp
 public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 {
     public int StatusCode { get; init; }
     public TData? Data { get; init; }
+    public object? Meta { get; init; }      // the app's metadata, carried as-is
 
     public static ISuccessEnvelope<TData> From(
-        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
-        => new SuccessResponse<TData> { StatusCode = statusCode, Data = data };
-}
-```
-
-**Paginated (2-param generic):**
-
-```csharp
-public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
-{
-    public int StatusCode { get; init; }
-    public TData? Data { get; init; }
-    public TPage? Pagination { get; init; }
-
-    public static ISuccessEnvelope<TData> From(
-        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
-        => new SuccessResponse<TData, TPage>
+        TData data, object? meta, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData>
         {
             StatusCode = statusCode,
             Data = data,
-            Pagination = pagination is TPage typed ? typed : default,
+            Meta = meta,
         };
 }
 ```
 
+`Meta` is typed `object` on purpose: its shape is the app's business, and
+`System.Text.Json` serializes it by its runtime type, so a paginated response emits the
+full pagination object while a non-paged one emits just what the meta type declares.
+
 Register:
 
 ```csharp
-options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
-options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
+options.Success.SetResponse(typeof(SuccessResponse<>));    // typed, with optional meta
 ```
 
 When `options.Success.Enabled = false`, successes are returned raw with no wrapper.
@@ -419,10 +407,9 @@ A custom pagination strategy is three types:
 | --- | --- | --- |
 | Query | Bound from the request, carries the caller's intent (page, cursor, after-key, …) | `IPaginatedQuery` |
 | Result | Returned from the service, carries the data the service actually produced | _none — plain DTO_ |
-| Info | Metadata describing the page; serialized as the second generic parameter of the success envelope | `IPaginationDetails` |
+| Info | Describes the page back to the client; passed inside the app's response metadata | `IPaginationDetails` |
 
-The two interfaces are tiny. `IPaginatedQuery` is an empty marker and
-`IPaginationDetails` is an empty marker:
+The two interfaces are tiny — both are empty markers:
 
 ```csharp
 public interface IPaginatedQuery { }
@@ -432,8 +419,7 @@ public interface IPaginationDetails { }
 
 Neither interface enforces limits. The built-in queries clamp `Page`/`Limit` to a
 minimum of 1 only — there are no caps. If you need maximum bounds, add them to
-your own query type (e.g. a `<c>MaxLimit</c> field or constant used in the
-`Limit` setter).
+your own query type (e.g. a `MaxLimit` field or constant used in the `Limit` setter).
 
 ### Configuring Limits
 
@@ -448,6 +434,27 @@ public sealed class KeysetQuery : IPaginatedQuery
     public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
 }
 ```
+
+### Response Metadata (`Meta`)
+
+Metadata is **one type for the whole API**, built in the endpoint layer and handed to
+`http.Ok(data, meta)`. Pagination is one property of it — not the whole thing — so a
+response that isn't paged simply leaves it out:
+
+```csharp
+public sealed class Meta
+{
+    public object? Pagination { get; init; }      // null when the response isn't paged
+    public DateTimeOffset Timestamp { get; init; }
+    public string? TraceId { get; init; }
+
+    // A fluent builder keeps endpoints to one line; add Set… methods as the API grows.
+    public static MetaBuilder Builder(HttpContext http) => new(http);
+}
+```
+
+`Pagination` is typed `object` so a non-paged response can omit it, while
+`System.Text.Json` still serializes the concrete pagination type's full shape.
 
 ### Custom Pagination (recommended)
 
@@ -473,8 +480,7 @@ public sealed class KeysetResult<T>
     public long? TotalCount { get; init; }
 }
 
-// Info — implements IPaginationDetails; serialized as the second generic
-// parameter of the success envelope
+// Info — implements IPaginationDetails; goes into the app's Meta
 public sealed class KeysetInfo : IPaginationDetails
 {
     public string? NextKey { get; init; }
@@ -484,18 +490,20 @@ public sealed class KeysetInfo : IPaginationDetails
 }
 
 // Endpoint
-group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http) =>
+group.MapGet("/keyset", (IProductService service, [AsParameters] KeysetQuery query, IHttpResultFactory http, HttpContext context) =>
     Outcome.Success(service.GetProductsKeyset(query)).ToResult(http, page =>
-        http.Ok(page.Items, new KeysetInfo
-        {
-            NextKey = page.NextKey,
-            HasMore = page.NextKey is not null,
-            TotalItems = page.TotalCount,
-        })))
-    .Produces<SuccessResponse<Product[], KeysetInfo>>();
+        http.Ok(page.Items, Meta.Builder(context)
+            .SetPagination(new KeysetInfo
+            {
+                NextKey = page.NextKey,
+                HasMore = page.NextKey is not null,
+                TotalItems = page.TotalCount,
+            })
+            .Build())))
+    .Produces<SuccessResponse<Product[]>>();
 ```
 
-If you have a convention for building `Info` from `Result` (e.g. a
+If you have a convention for building the info from the result (e.g. a
 `ToKeysetInfo()` helper on the result), use it. If not, build the info inline
 — the contract is just `IPaginationDetails`, and the serializer doesn't care
 which concrete type you used.
@@ -526,10 +534,12 @@ public DefaultOffsetResult<Order> GetOrders(DefaultOffsetQuery query)
 }
 
 // Endpoint
-group.MapGet("/", (IOrderService service, [AsParameters] DefaultOffsetQuery query, IHttpResultFactory http) =>
+group.MapGet("/", (IOrderService service, [AsParameters] DefaultOffsetQuery query, IHttpResultFactory http, HttpContext context) =>
     Outcome.Success(service.GetOrders(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToOffsetInfo(query))))
-    .Produces<SuccessResponse<Order[], DefaultOffsetInfo>>();
+        http.Ok(page.Items, Meta.Builder(context)
+            .SetPagination(page.ToOffsetPagination(query))
+            .Build())))
+    .Produces<SuccessResponse<Order[]>>();
 ```
 
 **Cursor:**
@@ -552,10 +562,12 @@ public DefaultCursorResult<Order> GetOrdersCursor(DefaultCursorQuery cursorQuery
 }
 
 // Endpoint
-group.MapGet("/cursor", (IOrderService service, [AsParameters] DefaultCursorQuery cursorQuery, IHttpResultFactory http) =>
+group.MapGet("/cursor", (IOrderService service, [AsParameters] DefaultCursorQuery cursorQuery, IHttpResultFactory http, HttpContext context) =>
     Outcome.Success(service.GetOrdersCursor(cursorQuery)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToCursorInfo(cursorQuery))))
-    .Produces<SuccessResponse<Order[], DefaultCursorInfo>>();
+        http.Ok(page.Items, Meta.Builder(context)
+            .SetPagination(page.ToCursorPagination(cursorQuery))
+            .Build())))
+    .Produces<SuccessResponse<Order[]>>();
 ```
 
 ---

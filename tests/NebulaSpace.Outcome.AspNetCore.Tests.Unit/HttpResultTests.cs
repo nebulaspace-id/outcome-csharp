@@ -10,6 +10,7 @@ using NebulaSpace.Outcome.AspNetCore.Failures;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 using NebulaSpace.Outcome.AspNetCore.Tests.Unit.TestHelpers;
 
 namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
@@ -75,19 +76,26 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task Ok_WithPagination_IncludesFullConcretePaginationInEnvelope()
+    public async Task Ok_WithMeta_IncludesFullMetaInEnvelope()
     {
-        // 2‑param envelope so STJ serializes the full DefaultOffsetInfo shape,
-        // not just the IPaginationDetails interface members.
+        // 2‑param envelope so STJ serializes the meta's full shape.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<>)));
 
-        var pagination = Pagination.DefaultOffsetPagination.Create(1, 10, 37);
-        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, pagination));
+        var meta = new PagedMeta<OffsetPage>
+        {
+            Pagination = OffsetPage.Create(1, 10, 37),
+            Timestamp = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        };
+
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        var page = json.GetProperty("pagination");
+        var metaJson = json.GetProperty("meta");
+        // DateTimeOffset serializes as an ISO-8601 string.
+        Assert.False(string.IsNullOrEmpty(metaJson.GetProperty("timestamp").GetString()));
+        var page = metaJson.GetProperty("pagination");
         Assert.Equal(1, page.GetProperty("page").GetInt32());
         Assert.Equal(10, page.GetProperty("limit").GetInt32());
         Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
@@ -96,26 +104,30 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task Ok_WithCursorPagination_IncludesFullCursorInfoInEnvelope()
+    public async Task Ok_WithCursorMeta_IncludesFullMetaInEnvelope()
     {
-        // 2‑param envelope closes TPage with DefaultCursorInfo, so STJ sees
-        // NextCursor, PreviousCursor, HasMore, TotalItems — not just IPaginationDetails.
+        // Meta is the app's own type; the envelope carries it through untouched.
+        // every property it declares — pagination and the rest.
+        // (Meta is carried as object, so STJ serializes the runtime type.)
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<>)));
 
-        var cursorInfo = new Pagination.DefaultCursorPagination
+        var meta = new PagedMeta<CursorPage>
         {
-            PreviousCursor = "prev-abc",
-            NextCursor = "next-def",
-            HasMore = true,
-            TotalItems = 100,
+            Pagination = new CursorPage
+            {
+                PreviousCursor = "prev-abc",
+                NextCursor = "next-def",
+                HasMore = true,
+                TotalItems = 100,
+            },
         };
 
-        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, cursorInfo));
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        var page = json.GetProperty("pagination");
+        var page = json.GetProperty("meta").GetProperty("pagination");
         Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
         Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
@@ -123,56 +135,80 @@ public class HttpResultTests
     }
 
     [Fact]
-    public async Task Ok_WithCustomPaginationDetails_UsesConcreteType()
+    public async Task Ok_WithPlainMeta_UsesConcreteType()
     {
-        // Custom IPaginationDetails type — the factory resolves TPage at runtime
-        // via pagination?.GetType(), so STJ serializes the full shape.
+        // A meta type with no pagination at all — Meta is typed object, so STJ
+        // serializes the runtime type's full shape.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(DefaultSuccessResponse<,>)));
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<>)));
 
-        var keyset = new CustomKeysetPage
-        {
-            NextKey = "abc-123",
-            PreviousKey = null,
-            HasMore = true,
-            TotalItems = 500,
-        };
+        var meta = new Meta { TraceId = "trace-1" };
 
-        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, keyset));
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        var page = json.GetProperty("pagination");
-        Assert.Equal("abc-123", page.GetProperty("nextKey").GetString());
-        Assert.True(page.GetProperty("hasMore").GetBoolean());
-        Assert.Equal(500, page.GetProperty("totalItems").GetInt32());
+        Assert.Equal("trace-1", json.GetProperty("meta").GetProperty("traceId").GetString());
+        Assert.False(json.GetProperty("meta").TryGetProperty("pagination", out _));
     }
 
     [Fact]
-    public async Task Ok_WithPagination_NoTwoParamEnvelopeRegistered_FallsBackToDefault()
+    public async Task Ok_WithMeta_NoTwoParamEnvelopeRegistered_FallsBackToDefault()
     {
-        // No envelope registered at all — falls back to DefaultSuccessResponse.
-        // Pagination must still appear via the auto-fallback
-        // DefaultSuccessResponse<TData, TPage>, never silently dropped.
+        // No envelope registered at all — falls back to DefaultSuccessResponse<T>.
+        // Meta must still appear in the body, never silently dropped.
         var factory = ResultTestHelper.CreateFactory(); // no SetResponse call
 
-        var pagination = Pagination.DefaultOffsetPagination.Create(2, 5, 42);
-        var capture = await Execute(factory, factory.Ok(new[] { "a", "b" }, pagination));
+        var meta = new PagedMeta<OffsetPage> { Pagination = OffsetPage.Create(2, 5, 42) };
+        var capture = await Execute(factory, factory.Ok(new[] { "a", "b" }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
-        Assert.True(json.TryGetProperty("pagination", out _), "pagination must not be dropped");
-        var page = json.GetProperty("pagination");
+        Assert.True(json.TryGetProperty("meta", out _), "meta must not be dropped");
+        var page = json.GetProperty("meta").GetProperty("pagination");
         Assert.Equal(2, page.GetProperty("page").GetInt32());
         Assert.Equal(5, page.GetProperty("limit").GetInt32());
         Assert.Equal(9, page.GetProperty("totalPages").GetInt32());
         Assert.Equal(42, page.GetProperty("totalItems").GetInt32());
     }
 
-    private sealed class CustomKeysetPage : Pagination.IPaginationDetails
+    // ── Test doubles — the app's own meta types, as a user would define them ──
+
+    /// <summary>Metadata with no pagination — timestamps, trace ids, whatever.</summary>
+    private sealed class Meta
     {
-        public string? NextKey { get; set; }
-        public string? PreviousKey { get; set; }
+        public string? TraceId { get; set; }
+        public DateTimeOffset Timestamp { get; set; }
+    }
+
+    /// <summary>Metadata carrying pagination plus other fields.</summary>
+    private sealed class PagedMeta<TPagination>
+    {
+        public TPagination? Pagination { get; set; }
+        public DateTimeOffset Timestamp { get; set; }
+    }
+
+    private sealed class OffsetPage : Pagination.IPaginationDetails
+    {
+        public bool HasMore => Page < TotalPages;
+        public int Page { get; set; }
+        public int Limit { get; set; }
+        public int TotalPages { get; set; }
+        public long? TotalItems { get; set; }
+
+        public static OffsetPage Create(int page, int limit, int totalItems) => new()
+        {
+            Page = page,
+            Limit = limit,
+            TotalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / limit),
+            TotalItems = totalItems,
+        };
+    }
+
+    private sealed class CursorPage : Pagination.IPaginationDetails
+    {
+        public string? PreviousCursor { get; set; }
+        public string? NextCursor { get; set; }
         public bool HasMore { get; set; }
         public long? TotalItems { get; set; }
     }

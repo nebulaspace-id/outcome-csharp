@@ -84,14 +84,10 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddOutcome(options =>
 {
-    // 1-param open-generic — non-paginated responses.
-    // Closes T per request so Swagger documents Data: Product, not Data: object.
+    // 1-param open-generic — closes T per request so Swagger documents
+    // Data: Product, not Data: object. Meta rides along as object, so
+    // paginated and non-paginated responses share this one envelope.
     options.Success.SetResponse(typeof(SuccessResponse<>));
-
-    // 2-param open-generic — paginated responses.
-    // TPage is the concrete pagination type (DefaultOffsetInfo, DefaultCursorInfo, or custom)
-    // so STJ and Swagger serialize the full pagination shape.
-    options.Success.SetResponse(typeof(SuccessResponse<,>));
 
     // Non-generic — responses with no payload (http.Ok() with no arguments).
     options.Success.SetResponse(typeof(SuccessResponse));

@@ -105,38 +105,28 @@ public sealed class ErrorResponse : IErrorEnvelope
 
 ### Success envelope
 
-Non-paginated:
+Typed, with optional metadata:
 
 ```csharp
 public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
 {
     public int StatusCode { get; init; }
     public TData? Data { get; init; }
+    public object? Meta { get; init; }      // the app's metadata, carried as-is
 
     public static ISuccessEnvelope<TData> From(
-        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
-        => new SuccessResponse<TData> { StatusCode = statusCode, Data = data };
-}
-```
-
-Paginated (2-param generic):
-
-```csharp
-public sealed class SuccessResponse<TData, TPage> : ISuccessEnvelope<TData>
-{
-    public int StatusCode { get; init; }
-    public TData? Data { get; init; }
-    public TPage? Pagination { get; init; }
-
-    public static ISuccessEnvelope<TData> From(
-        TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode)
-        => new SuccessResponse<TData, TPage>
+        TData data, object? meta, HttpContext httpContext, int statusCode)
+        => new SuccessResponse<TData>
         {
-            StatusCode = statusCode, Data = data,
-            Pagination = pagination is TPage typed ? typed : default,
+            StatusCode = statusCode, Data = data, Meta = meta,
         };
 }
 ```
+
+`Meta` is `object` on purpose: its shape is your app's business, the library never
+inspects it, and `System.Text.Json` serializes it by its runtime type — so a paginated
+response emits the full pagination object, and a non-paged response emits just what
+your meta type declares.
 
 No-payload (for `http.Ok()`):
 
@@ -148,6 +138,36 @@ public sealed class SuccessResponse
         new SuccessResponse { StatusCode = statusCode };
 }
 ```
+
+### Metadata (`Meta`)
+
+Metadata is one type for the whole API — build it in the endpoint layer and hand it to
+`http.Ok(data, meta)`. Pagination is one property of it, not the whole thing, so a
+response that isn't paged simply leaves it out:
+
+```csharp
+public sealed class Meta
+{
+    public object? Pagination { get; init; }      // null when the response isn't paged
+    public DateTimeOffset Timestamp { get; init; }
+    public string? TraceId { get; init; }
+}
+
+// Fluent builder keeps endpoints to one line; add Set… methods as the API grows.
+public static MetaBuilder Builder(HttpContext http) => new(http);
+
+// Endpoint — paginated
+Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
+    http.Ok(page.Items, Meta.Builder(context)
+        .SetPagination(page.ToOffsetPagination(query))
+        .Build()));
+
+// Endpoint — not paginated: no SetPagination, so no pagination key
+http.Ok(product, Meta.Builder(context).Build());
+```
+
+`Pagination` is typed `object` so a non-paged response can omit it; STJ still serializes
+the concrete pagination type's full shape.
 
 ### Pagination types
 
@@ -194,11 +214,13 @@ public sealed class OffsetPagination : IPaginationDetails
     };
 }
 
-// 4. Endpoint — one-line call
-group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
+// 4. Endpoint — one-line call; the endpoint builds the app's Meta
+group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http, HttpContext context) =>
     Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToOffsetPagination(query))))
-    .Produces<SuccessResponse<Product[], OffsetPagination>>();
+        http.Ok(page.Items, Meta.Builder(context)
+            .SetPagination(page.ToOffsetPagination(query))
+            .Build())))
+    .Produces<SuccessResponse<Product[]>>();
 ```
 
 Example — custom cursor pagination:
@@ -242,10 +264,12 @@ public sealed class CursorPagination : IPaginationDetails
 }
 
 // 4. Endpoint
-group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
+group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http, HttpContext context) =>
     Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page =>
-        http.Ok(page.Items, page.ToCursorPagination())))
-    .Produces<SuccessResponse<Product[], CursorPagination>>();
+        http.Ok(page.Items, Meta.Builder(context)
+            .SetPagination(page.ToCursorPagination())
+            .Build())))
+    .Produces<SuccessResponse<Product[]>>();
 ```
 
 ---
@@ -255,8 +279,7 @@ group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery que
 ```csharp
 builder.Services.AddOutcome(options =>
 {
-    options.Success.SetResponse(typeof(SuccessResponse<>));    // non-paginated
-    options.Success.SetResponse(typeof(SuccessResponse<,>));   // paginated
+    options.Success.SetResponse(typeof(SuccessResponse<>));    // typed, with optional meta
     options.Success.SetResponse(typeof(SuccessResponse));      // no-payload
     options.Error.SetResponse<ErrorResponse>();
 });
@@ -272,7 +295,7 @@ Inject `IHttpResultFactory` into endpoints or services to build responses:
 | --- | --- |
 | `http.Ok()` | 200, no payload |
 | `http.Ok(data)` | 200, wrapped per `Success.Enabled` |
-| `http.Ok(data, pagination)` | 200 with pagination metadata |
+| `http.Ok(data, meta)` | 200 with the app's response metadata |
 | `http.Created(uri, data)` | 201 with `Location` header |
 | `http.NoContent()` | 204 |
 | `http.BadRequest(...)` / `http.NotFound(...)` / `http.Conflict(...)` | Error envelope |

@@ -54,13 +54,18 @@ public class ProductsController : ControllerBase
 
     // ── List (offset) ────────────────────────────────────────────────────────
     // Custom offset pagination. Page/limit bound from the query string.
+    // The controller builds the app's metadata (pagination + per-request fields).
 
     [HttpGet]
     public IActionResult List([FromQuery] Shared.OffsetQuery query)
     {
         var result = _service.GetProducts(query);
         return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(items, result.ToOffsetPagination(query)));
+            .ToActionResult(_http, items => _http.Ok(
+                items,
+                Meta.Builder(HttpContext)
+                    .SetPagination(result.ToOffsetPagination(query))
+                    .Build()));
     }
 
     // ── List (cursor) ───────────────────────────────────────────────────────
@@ -71,7 +76,11 @@ public class ProductsController : ControllerBase
     {
         var result = _service.GetProductsCursor(query);
         return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(items, result.ToCursorPagination()));
+            .ToActionResult(_http, items => _http.Ok(
+                items,
+                Meta.Builder(HttpContext)
+                    .SetPagination(result.ToCursorPagination())
+                    .Build()));
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ public sealed class CreatedResult<T> : IResult
 
         // SuccessEnvelopeResult sets the status code, so we don't duplicate it here.
         var envelope = new SuccessEnvelopeResult<T>(
-            _data, pagination: null, StatusCodes.Status201Created, _options);
+            _data, meta: null, StatusCodes.Status201Created, _options);
 
         await envelope.ExecuteAsync(httpContext);
     }

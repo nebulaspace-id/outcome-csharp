@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Models;
 using NebulaSpace.Outcome.AspNetCore.Options;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
@@ -30,22 +29,11 @@ public sealed class HttpResultFactory : IHttpResultFactory
 
     /// <inheritdoc />
     public IResult Ok<T>(T? data = default) =>
-        SuccessEnvelopeResultFor(data, pagination: null, StatusCodes.Status200OK);
+        new SuccessEnvelopeResult<T>(data, meta: null, StatusCodes.Status200OK, _options);
 
     /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.DefaultOffsetPagination offsetPagination) =>
-        SuccessEnvelopeResultFor(data, offsetPagination, StatusCodes.Status200OK);
-
-    /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.DefaultCursorPagination cursorPagination) =>
-        SuccessEnvelopeResultFor(data, cursorPagination, StatusCodes.Status200OK);
-
-    /// <inheritdoc />
-    public IResult Ok<T>(T data, Pagination.IPaginationDetails pagination) =>
-        SuccessEnvelopeResultFor(data, pagination, StatusCodes.Status200OK);
-
-    private IResult SuccessEnvelopeResultFor<T>(T? data, IPaginationDetails? pagination, int statusCode) =>
-        new SuccessEnvelopeResult<T>(data, pagination, statusCode, _options);
+    public IResult Ok<T>(T data, object? meta) =>
+        new SuccessEnvelopeResult<T>(data, meta, StatusCodes.Status200OK, _options);
 
     /// <inheritdoc />
     public IResult Created<T>(string locationUri, T data) =>

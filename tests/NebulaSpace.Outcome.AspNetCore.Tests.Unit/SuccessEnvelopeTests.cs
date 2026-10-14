@@ -11,9 +11,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Tests.Unit;
 /// <summary>
 /// Verifies the typed success envelope: <see cref="SuccessEnvelopeResult{T}"/> renders
 /// the user-defined envelope type via <c>options.Success.SetResponse(typeof(AppSuccess&lt;&gt;))</c>
-/// (built from the payload, pagination, request, and status), and falls back to the
-/// default <see cref="DefaultSuccessResponse{T}"/> when no envelope is configured.
-/// A custom envelope must implement <see cref="ISuccessEnvelope{T}"/>.
+/// (built from the payload, the app's metadata, the request, and the status), and falls
+/// back to the default <see cref="DefaultSuccessResponse{T}"/> when no envelope is
+/// configured. A custom envelope must implement <see cref="ISuccessEnvelope{T}"/>.
 /// </summary>
 public class SuccessEnvelopeTests
 {
@@ -75,19 +75,22 @@ public class SuccessEnvelopeTests
     }
 
     [Fact]
-    public async Task Ok_WithTypedEnvelope_AndPagination_ForwardsPagination()
+    public async Task Ok_WithTypedEnvelope_ForwardsMeta()
     {
-        // 2‑param envelope so STJ serializes the full DefaultOffsetInfo shape.
+        // Meta rides through as object, so STJ serializes the app meta type's full shape.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(AppSuccess<,>)));
+            options.Success.SetResponse(typeof(AppSuccess<>)));
 
-        var pagination = DefaultOffsetPagination.Create(page: 2, limit: 10, totalItems: 37);
-        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, pagination));
+        var meta = new PagedMeta<DefaultOffsetPagination>
+        {
+            Pagination = DefaultOffsetPagination.Create(page: 2, limit: 10, totalItems: 37),
+        };
+        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         var root = doc.RootElement;
-        var page = root.GetProperty("pagination");
+        var page = root.GetProperty("meta").GetProperty("pagination");
         Assert.Equal(2, page.GetProperty("page").GetInt32());
         Assert.Equal(10, page.GetProperty("limit").GetInt32());
         Assert.Equal(4, page.GetProperty("totalPages").GetInt32());
@@ -96,26 +99,28 @@ public class SuccessEnvelopeTests
     }
 
     [Fact]
-    public async Task Ok_WithTypedEnvelope_AndCursorPagination_ForwardsFullCursorInfo()
+    public async Task Ok_WithTypedEnvelope_ForwardsCursorMeta()
     {
-        // 2‑param envelope — TPage is DefaultCursorInfo, full shape serialized.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse(typeof(AppSuccess<,>)));
+            options.Success.SetResponse(typeof(AppSuccess<>)));
 
-        var cursorInfo = new DefaultCursorPagination
+        var meta = new PagedMeta<DefaultCursorPagination>
         {
-            PreviousCursor = "prev-abc",
-            NextCursor = "next-def",
-            HasMore = true,
-            TotalItems = 100,
+            Pagination = new DefaultCursorPagination
+            {
+                PreviousCursor = "prev-abc",
+                NextCursor = "next-def",
+                HasMore = true,
+                TotalItems = 100,
+            },
         };
 
-        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, cursorInfo));
+        var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(new[] { 1, 2 }, meta));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         var root = doc.RootElement;
-        var page = root.GetProperty("pagination");
+        var page = root.GetProperty("meta").GetProperty("pagination");
         Assert.Equal("prev-abc", page.GetProperty("previousCursor").GetString());
         Assert.Equal("next-def", page.GetProperty("nextCursor").GetString());
         Assert.True(page.GetProperty("hasMore").GetBoolean());
@@ -181,7 +186,7 @@ public class SuccessEnvelopeTests
         // The AOT-safe Set(delegate) overload stores the factory as-is — every request
         // is a plain delegate call, zero MakeGenericType/GetMethod/Invoke.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse((data, pagination, http, statusCode) =>
+            options.Success.SetResponse((data, meta, http, statusCode) =>
                 new AppSuccess<object?>
                 {
                     TraceId = http.TraceIdentifier,
@@ -198,28 +203,32 @@ public class SuccessEnvelopeTests
     }
 
     [Fact]
-    public async Task Ok_Paginated_WithDelegateEnvelope_RoutesThroughDelegate()
+    public async Task Ok_WithMeta_WithDelegateEnvelope_RoutesThroughDelegate()
     {
-        // AOT-safe: the delegate overload also handles paginated responses — pagination
-        // arrives as the second argument, so the MakeGenericType fallback never runs.
+        // AOT-safe: the delegate overload also handles meta responses — the app's
+        // metadata arrives as the second argument, so no reflection fallback runs.
         var factory = ResultTestHelper.CreateFactory(options =>
-            options.Success.SetResponse((data, pagination, http, statusCode) =>
+            options.Success.SetResponse((data, meta, http, statusCode) =>
                 new DelegateEnvelope
                 {
                     StatusCode = statusCode,
                     Data = data,
-                    Pagination = pagination,
+                    Meta = meta,
                 }));
 
         var capture = await ResultTestHelper.ExecuteAsync(factory.Ok(
             new[] { 1, 2 },
-            DefaultOffsetPagination.Create(page: 2, limit: 2, totalItems: 5)));
+            new PagedMeta<DefaultOffsetPagination>
+            {
+                Pagination = DefaultOffsetPagination.Create(page: 2, limit: 2, totalItems: 5),
+            }));
 
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         using var doc = JsonDocument.Parse(capture.Body);
         Assert.Equal("delegate", doc.RootElement.GetProperty("via").GetString());
-        Assert.Equal(2, doc.RootElement.GetProperty("pagination").GetProperty("page").GetInt32());
-        Assert.Equal(3, doc.RootElement.GetProperty("pagination").GetProperty("totalPages").GetInt32());
+        var page = doc.RootElement.GetProperty("meta").GetProperty("pagination");
+        Assert.Equal(2, page.GetProperty("page").GetInt32());
+        Assert.Equal(3, page.GetProperty("totalPages").GetInt32());
     }
 
     /// <summary>An envelope built by the AOT-safe delegate overload — no interface required.</summary>
@@ -229,44 +238,33 @@ public class SuccessEnvelopeTests
         public int StatusCode { get; set; }
         public object? Data { get; set; }
 
-        // `object`, not IPaginationDetails: STJ serializes an interface-typed property using
-        // the interface contract (empty for a marker interface). An object-typed property is
-        // serialized by its runtime type, so the full DefaultOffsetInfo shape appears in JSON.
-        public object? Pagination { get; set; }
+        // `object`, not a contract type: STJ serializes an object-typed property by its
+        // runtime type, so the app meta type's full shape appears in JSON.
+        public object? Meta { get; set; }
     }
 
-    /// <summary>A user-defined 1‑param typed success envelope for non‑paginated responses.</summary>
+    /// <summary>Metadata carrying pagination plus other fields — the app's own meta type.</summary>
+    private sealed class PagedMeta<TPagination>
+    {
+        public TPagination? Pagination { get; set; }
+        public DateTimeOffset Timestamp { get; set; }
+    }
+
+    /// <summary>A user-defined typed success envelope.</summary>
     private sealed class AppSuccess<T> : ISuccessEnvelope<T>
     {
         public string? TraceId { get; set; }
         public int StatusCode { get; set; }
         public T? Data { get; set; }
+        public object? Meta { get; set; }
 
-        public static ISuccessEnvelope<T> From(T data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode) =>
+        public static ISuccessEnvelope<T> From(T data, object? meta, HttpContext httpContext, int statusCode) =>
             new AppSuccess<T>
             {
                 TraceId = httpContext.TraceIdentifier,
                 StatusCode = statusCode,
                 Data = data,
-            };
-    }
-
-    /// <summary>A 2‑param typed success envelope — TPage is the concrete pagination type,
-    /// so STJ and Swagger serialize full DefaultOffsetInfo / DefaultCursorInfo shape.</summary>
-    private sealed class AppSuccess<TData, TPage> : ISuccessEnvelope<TData>
-    {
-        public string? TraceId { get; set; }
-        public int StatusCode { get; set; }
-        public TData? Data { get; set; }
-        public TPage? Pagination { get; set; }
-
-        public static ISuccessEnvelope<TData> From(TData data, IPaginationDetails? pagination, HttpContext httpContext, int statusCode) =>
-            new AppSuccess<TData, TPage>
-            {
-                TraceId = httpContext.TraceIdentifier,
-                StatusCode = statusCode,
-                Data = data,
-                Pagination = pagination is TPage typed ? typed : default,
+                Meta = meta,
             };
     }
 

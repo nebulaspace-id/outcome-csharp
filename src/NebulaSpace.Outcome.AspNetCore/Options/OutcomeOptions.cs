@@ -41,11 +41,8 @@ public sealed class OutcomeOptions
 
     // ── Internal facades for the rest of the library ──────────────────
 
-    internal Func<object?, IPaginationDetails?, HttpContext, int, object>? SuccessFactory =>
+    internal Func<object?, object?, HttpContext, int, object>? SuccessFactory =>
         Success.Factory;
-
-    internal Func<object?, IPaginationDetails?, HttpContext, int, object>? SuccessPaginationFactory =>
-        Success.PaginationFactory;
 
     internal Func<FailureDetails, HttpContext, object>? ErrorFactory =>
         Error.Factory;
