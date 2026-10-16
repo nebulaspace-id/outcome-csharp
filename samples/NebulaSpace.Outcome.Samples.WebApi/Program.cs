@@ -85,12 +85,12 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddOutcome(options =>
 {
     // 1-param open-generic — closes T per request so Swagger documents
-    // Data: Product, not Data: object. Meta rides along as object, so
-    // paginated and non-paginated responses share this one envelope.
+    // Data: Product, not Data: object. One envelope covers every response:
+    // Meta rides along as object, and http.Ok() (no payload) simply has a
+    // null Data that WhenWritingNull omits.
     options.Success.SetResponse(typeof(SuccessResponse<>));
 
-    // Non-generic — responses with no payload (http.Ok() with no arguments).
-    options.Success.SetResponse(typeof(SuccessResponse));
+
 
     // Error envelope — compile-time safe (IErrorEnvelope is non-generic).
     options.Error.SetResponse<ErrorResponse>();

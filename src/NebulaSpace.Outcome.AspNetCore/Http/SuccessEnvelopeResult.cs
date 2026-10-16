@@ -5,38 +5,6 @@ using NebulaSpace.Outcome.AspNetCore.Options;
 namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
-/// A successful <see cref="IResult"/> for responses with no payload.
-/// When a custom no-payload envelope is registered via
-/// <c>options.Success.SetResponse(...)</c>, it delegates to that factory with
-/// <c>null</c> data. Otherwise it uses <see cref="DefaultSuccessResponse"/> — a
-/// status-code-only envelope.
-/// </summary>
-public sealed class SuccessEnvelopeResult : IResult
-{
-    private readonly int _statusCode;
-    private readonly OutcomeOptions _options;
-
-    public SuccessEnvelopeResult(int statusCode, OutcomeOptions options)
-    {
-        _statusCode = statusCode;
-        _options = options;
-    }
-
-    /// <inheritdoc />
-    public async Task ExecuteAsync(HttpContext httpContext)
-    {
-        object body = !_options.Success.Enabled
-            ? new {}
-            : _options.Success.EmptyFactory is { } emptyFactory
-                ? emptyFactory(httpContext, _statusCode)
-                : new DefaultSuccessResponse { StatusCode = _statusCode };
-
-        httpContext.Response.StatusCode = _statusCode;
-        await httpContext.Response.WriteAsJsonAsync(body);
-    }
-}
-
-/// <summary>
 /// A successful <see cref="IResult"/> that wraps the payload in the configured success
 /// envelope — or returns it raw when <see cref="SuccessOptions.Enabled"/> is
 /// <c>false</c>. The envelope is built at execution time so the factory can read the

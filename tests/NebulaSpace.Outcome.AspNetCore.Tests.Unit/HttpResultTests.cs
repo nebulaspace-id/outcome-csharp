@@ -32,6 +32,7 @@ public class HttpResultTests
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.Equal(200, json.GetProperty("statusCode").GetInt32());
+        // No payload → Data is null → WhenWritingNull omits it.
         Assert.False(json.TryGetProperty("data", out _));
     }
 
@@ -46,6 +47,18 @@ public class HttpResultTests
         Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
         var json = ResultTestHelper.ParseJson(capture.Body);
         Assert.Equal(200, json.GetProperty("statusCode").GetInt32());
+        // Unit is a struct, so T closes as object → Data stays null → omitted.
+        Assert.False(json.TryGetProperty("data", out _));
+    }
+
+    [Fact]
+    public void SetResponse_NonGenericType_Throws()
+    {
+        var options = new OutcomeOptions();
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => options.Success.SetResponse(typeof(string)));
+
+        Assert.Contains("open generic", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -153,6 +166,42 @@ public class HttpResultTests
     }
 
     [Fact]
+    public async Task Ok_WithFlatMeta_EmitsPaginationFieldsDirectlyOnMeta()
+    {
+        // JSON:API convention — pagination fields sit directly on `meta`, not nested
+        // under a `pagination` property. The app's flat meta type declares them all.
+        var factory = ResultTestHelper.CreateFactory(options =>
+            options.Success.SetResponse(typeof(DefaultSuccessResponse<>)));
+
+        var meta = new FlatMeta
+        {
+            Page = 1,
+            Limit = 10,
+            TotalItems = 100,
+            TotalPages = 10,
+            HasMore = true,
+            TraceId = "trace-1",
+        };
+
+        var capture = await Execute(factory, factory.Ok(new[] { 1, 2, 3 }, meta));
+
+        Assert.Equal(StatusCodes.Status200OK, capture.StatusCode);
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        var metaJson = json.GetProperty("meta");
+
+        // Flat: every pagination field is a direct property of `meta`.
+        Assert.Equal(1, metaJson.GetProperty("page").GetInt32());
+        Assert.Equal(10, metaJson.GetProperty("limit").GetInt32());
+        Assert.Equal(100, metaJson.GetProperty("totalItems").GetInt32());
+        Assert.Equal(10, metaJson.GetProperty("totalPages").GetInt32());
+        Assert.True(metaJson.GetProperty("hasMore").GetBoolean());
+        Assert.Equal("trace-1", metaJson.GetProperty("traceId").GetString());
+
+        // And nothing nested under `pagination`.
+        Assert.False(metaJson.TryGetProperty("pagination", out _));
+    }
+
+    [Fact]
     public async Task Ok_WithMeta_NoTwoParamEnvelopeRegistered_FallsBackToDefault()
     {
         // No envelope registered at all — falls back to DefaultSuccessResponse<T>.
@@ -179,6 +228,20 @@ public class HttpResultTests
     {
         public string? TraceId { get; set; }
         public DateTimeOffset Timestamp { get; set; }
+    }
+
+    /// <summary>
+    /// Flat metadata — pagination fields live directly on the meta object (JSON:API
+    /// style), not nested under a <c>pagination</c> property.
+    /// </summary>
+    private sealed class FlatMeta
+    {
+        public int? Page { get; set; }
+        public int? Limit { get; set; }
+        public long? TotalItems { get; set; }
+        public int? TotalPages { get; set; }
+        public bool? HasMore { get; set; }
+        public string? TraceId { get; set; }
     }
 
     /// <summary>Metadata carrying pagination plus other fields.</summary>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,9 +18,15 @@ internal static class ResultTestHelper
 {
     // Framework-built IResult types (Results.Ok/Json/...) resolve JSON options
     // through HttpContext.RequestServices, so provide a provider that has them.
+    // The JSON options match the sample app's (WhenWritingNull + camelCase), so a
+    // response with no payload omits its `data` key here exactly as it does there.
     private static readonly IServiceProvider RequestServices = new ServiceCollection()
         .AddLogging()
-        .ConfigureHttpJsonOptions(_ => { })
+        .ConfigureHttpJsonOptions(options =>
+        {
+            options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        })
         .BuildServiceProvider();
 
     /// <summary>Creates a fresh factory with default options (Success.Enabled = true).</summary>

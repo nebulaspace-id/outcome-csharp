@@ -3,18 +3,6 @@ using Microsoft.AspNetCore.Http;
 namespace NebulaSpace.Outcome.AspNetCore.Models;
 
 /// <summary>
-/// Non-generic envelope for a successful response with no payload.
-/// Serializes as <c>{"statusCode": N}</c> — no <c>data</c> or <c>meta</c> field.
-/// Used by <see cref="Http.SuccessEnvelopeResult"/> (the non-generic result) as the
-/// default when no custom envelope is registered.
-/// </summary>
-public sealed class DefaultSuccessResponse
-{
-    /// <summary>The HTTP status code for this response.</summary>
-    public int StatusCode { get; set; }
-}
-
-/// <summary>
 /// The library's default envelope for a successful operation. Carries the payload,
 /// the status code, and — when the app attached one — response <b>metadata</b>.
 ///

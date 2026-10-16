@@ -1,83 +1,80 @@
-using Microsoft.AspNetCore.Http;
+using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
-/// The app's response <b>metadata</b> — one type for the whole API, not one per
-/// endpoint. It carries whatever the API wants clients to see alongside the payload:
-/// pagination, timestamps, trace ids, links, and anything added later.
+/// The response metadata this API attaches to every success envelope — timestamp plus,
+/// when the response is paged, the page fields flattened directly onto it (JSON:API style:
+/// no nested <c>pagination</c> object).
 ///
 /// <para>
-/// Build it with <see cref="MetaBuilder"/> in the <b>endpoint layer</b>; the library
-/// only carries it through to the envelope and never inspects it.
-/// </para>
-///
-/// <para>
-/// <see cref="Pagination"/> is typed <see cref="object"/> because not every response is
-/// paged. System.Text.Json serializes an object-typed property by its runtime type, so a
-/// paginated response still emits the full pagination shape (<c>page</c>, <c>limit</c>,
-/// <c>totalPages</c>, …) rather than an empty interface contract. When a response is not
-/// paged the property stays <c>null</c>, and with
-/// <c>JsonIgnoreCondition.WhenWritingNull</c> the key is omitted entirely.
+/// Built in the <b>endpoint layer</b>; the library only carries it through to the
+/// envelope and never inspects it.
 /// </para>
 /// </summary>
+/// <remarks>
+/// Every pagination field is nullable, so <c>JsonIgnoreCondition.WhenWritingNull</c> omits
+/// the ones that do not apply — an unpaged response emits just <c>timestamp</c>, while
+/// offset and cursor responses each emit their own subset.
+/// </remarks>
 public sealed class Meta
 {
-    /// <summary>Pagination for this page, when the response is paged; else <c>null</c>.</summary>
-    public object? Pagination { get; }
+    // ── Offset pagination — null unless the response is offset-paged ──────────
+
+    /// <summary>The current 1-based page number.</summary>
+    public int? Page { get; init; }
+
+    /// <summary>Items per page the server returned for this request.</summary>
+    public int? Limit { get; init; }
+
+    /// <summary>Total items across all pages, when known.</summary>
+    public long? TotalItems { get; init; }
+
+    /// <summary>Total number of pages (<c>0</c> when there are no items).</summary>
+    public int? TotalPages { get; init; }
+
+    // ── Shared by offset and cursor ───────────────────────────────────────────
+
+    /// <summary>Whether at least one more page follows this one.</summary>
+    public bool? HasMore { get; init; }
+
+    // ── Cursor pagination — null unless the response is cursor-paged ──────────
+
+    /// <summary>Opaque cursor pointing to the previous page; <c>null</c> on the first page.</summary>
+    public string? PreviousCursor { get; init; }
+
+    /// <summary>Opaque cursor pointing to the next page; <c>null</c> on the last page.</summary>
+    public string? NextCursor { get; init; }
+
+    // ── Per-request ───────────────────────────────────────────────────────────
 
     /// <summary>When this response was produced (UTC).</summary>
-    public DateTimeOffset Timestamp { get; }
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    /// <summary>The request's trace id — <c>HttpContext.TraceIdentifier</c>.</summary>
-    public string? TraceId { get; }
-
-    internal Meta(object? pagination, DateTimeOffset timestamp, string? traceId)
-    {
-        Pagination = pagination;
-        Timestamp = timestamp;
-        TraceId = traceId;
-    }
+    // ── With — one per pagination strategy ────────────────────────────────────
 
     /// <summary>
-    /// Starts building metadata for the current request — fills the per-request
-    /// fields (timestamp, trace id) automatically.
+    /// Flattens <b>offset</b> pagination — <c>page</c>, <c>limit</c>, <c>totalItems</c>,
+    /// <c>totalPages</c>, and <c>hasMore</c> — onto this metadata.
     /// </summary>
-    public static MetaBuilder Builder(HttpContext httpContext) => new(httpContext);
-}
-
-/// <summary>
-/// Fluent builder for <see cref="Meta"/>. Start with <see cref="Meta.Builder"/>,
-/// add what the response carries, then <see cref="Build"/>.
-///
-/// <code>
-/// http.Ok(page.Items, Meta.Builder(context)
-///     .SetPagination(page.ToOffsetPagination(query))
-///     .Build())
-/// </code>
-///
-/// <para>
-/// Add a <c>Set…</c> method here when the API needs another metadata field; endpoints
-/// keep reading as one fluent line.
-/// </para>
-/// </summary>
-public sealed class MetaBuilder
-{
-    private readonly HttpContext _httpContext;
-    private object? _pagination;
-
-    internal MetaBuilder(HttpContext httpContext) => _httpContext = httpContext;
+    public Meta WithOffsetPagination(OffsetPagintion pagination) => new()
+    {
+        Page = pagination.Page,
+        Limit = pagination.Limit,
+        TotalItems = pagination.TotalItems,
+        TotalPages = pagination.TotalPages,
+        HasMore = pagination.HasMore,
+    };
 
     /// <summary>
-    /// Attaches the pagination for this page. The value is carried as-is and
-    /// serialized by its runtime type, so its full shape reaches the client.
+    /// Flattens <b>cursor</b> pagination — <c>previousCursor</c>, <c>nextCursor</c>,
+    /// <c>hasMore</c>, and <c>totalItems</c> — onto this metadata.
     /// </summary>
-    public MetaBuilder SetPagination(object pagination)
+    public Meta WithCursorPagination(CursorPagination pagination) => new()
     {
-        _pagination = pagination;
-        return this;
-    }
-
-    /// <summary>Builds the immutable <see cref="Meta"/> for this response.</summary>
-    public Meta Build() => new(_pagination, DateTimeOffset.UtcNow, _httpContext.TraceIdentifier);
+        PreviousCursor = pagination.PreviousCursor,
+        NextCursor = pagination.NextCursor,
+        HasMore = pagination.HasMore,
+        TotalItems = pagination.TotalItems,
+    };
 }

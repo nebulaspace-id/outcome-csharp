@@ -24,8 +24,10 @@ public sealed class HttpResultFactory : IHttpResultFactory
     }
 
     /// <inheritdoc />
+    // Null payload + T = Unit? closes the envelope as SuccessResponse<object> when no
+    // custom envelope is registered, so Data stays null and WhenWritingNull omits it.
     public IResult Ok() =>
-        new SuccessEnvelopeResult(StatusCodes.Status200OK, _options);
+        new SuccessEnvelopeResult<Unit?>(null, meta: null, StatusCodes.Status200OK, _options);
 
     /// <inheritdoc />
     public IResult Ok<T>(T? data = default) =>

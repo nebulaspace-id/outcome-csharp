@@ -4,26 +4,37 @@ using NebulaSpace.Outcome.AspNetCore.Models;
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
-/// Non-generic success envelope for responses with no payload.
-/// Serializes as <c>{"statusCode": 200}</c> — no <c>data</c> or <c>meta</c> field.
-/// Used with <c>.Produces&lt;SuccessResponse&gt;()</c> for <c>http.Ok()</c> (no args).
-/// Register with <c>options.Success.SetResponse(typeof(SuccessResponse))</c>.
-/// </summary>
-public sealed class SuccessResponse
-{
-    /// <summary>HTTP status the response used.</summary>
-    public int StatusCode { get; init; }
-
-    /// <summary>Builds the per-request body (no payload).</summary>
-    public static object From(HttpContext httpContext, int statusCode) =>
-        new SuccessResponse { StatusCode = statusCode };
-}
-
-/// <summary>
 /// Typed success envelope for a response. Carries <see cref="StatusCode"/>,
-/// the typed <see cref="Data"/> per endpoint, and an optional <see cref="Meta"/>
-/// — the app's own response metadata — serialized by its runtime type.
+/// the typed <see cref="Data"/> per endpoint, and <see cref="Meta"/>.
 /// Implements <see cref="ISuccessEnvelope{T}"/>.
+///
+/// <para>
+/// <see cref="Meta"/> is the app's own type, not <see cref="object"/>: this API has one
+/// meta shape for the whole surface, so the envelope names it and Swagger documents the
+/// exact fields. The library still hands meta over as <see cref="object"/> — it must not
+/// know the app's meta type — so the envelope narrows it here.
+/// </para>
+///
+/// <para>
+/// Whether every response carries meta is the app's call, not the library's. Two shapes,
+/// one line apart in <see cref="From"/>:
+/// </para>
+///
+/// <code>
+/// // (a) opt-in — meta appears only where an endpoint built one.
+/// //     http.Ok(product)  → { "statusCode": 200, "data": { ... } }
+/// //     http.Ok(p, meta)  → { "statusCode": 200, "data": ..., "meta": { ... } }
+/// Meta = meta as Meta,
+///
+/// // (b) always-on — every response carries a timestamp, and only pagination is opt-in.
+/// //     http.Ok(product)  → { "statusCode": 200, "data": ..., "meta": { ... } }
+/// Meta = meta as Meta ?? new Meta(),
+/// </code>
+///
+/// <para>
+/// This sample uses (b), but nothing in the library depends on that choice — it only
+/// requires the <see cref="ISuccessEnvelope{T}"/> contract.
+/// </para>
 /// </summary>
 /// <typeparam name="TData">The payload type.</typeparam>
 public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
@@ -35,17 +46,22 @@ public sealed class SuccessResponse<TData> : ISuccessEnvelope<TData>
     public TData? Data { get; init; }
 
     /// <summary>
-    /// Response metadata the app attached to this response, or <c>null</c> when
-    /// the response carries none. Serialized by its runtime type.
+    /// Response metadata for this response — the app's own when the endpoint attached one,
+    /// otherwise a bare timestamp. Drop the fallback in <see cref="From"/> to make it
+    /// strictly opt-in.
     /// </summary>
-    public object? Meta { get; init; }
+    public Meta? Meta { get; init; }
 
-    /// <summary>Builds the per‑request body.</summary>
+    /// <summary>Builds the per‐request body.</summary>
     public static ISuccessEnvelope<TData> From(TData data, object? meta, HttpContext httpContext, int statusCode) =>
         new SuccessResponse<TData>
         {
             StatusCode = statusCode,
             Data = data,
-            Meta = meta,
+            // The library carries meta as object; this API has exactly one meta type, so
+            // narrow it. A null (endpoint that attached no meta) falls back to a bare
+            // timestamp — every response carries meta, so endpoints opt into pagination,
+            // not into meta. Drop the "?? new Meta()" to make meta opt-in instead.
+            Meta = meta as Meta ?? new Meta(),
         };
 }

@@ -34,13 +34,6 @@ public sealed class SuccessOptions
     internal Func<object?, object?, HttpContext, int, object>? Factory { get; private set; }
 
     /// <summary>
-    /// Builds the concrete envelope instance for responses with no payload
-    /// (<c>http.Ok()</c> with no arguments). When <c>null</c>, the library uses
-    /// <see cref="DefaultSuccessResponse"/> — a status-code-only envelope.
-    /// </summary>
-    internal Func<HttpContext, int, object>? EmptyFactory { get; private set; }
-
-    /// <summary>
     /// Stores the factory delegate as‑is — every request is a plain delegate call, zero
     /// reflection. Useful when the envelope shape is built inline or the constructor needs
     /// extra wiring, and AOT‑safe.
@@ -56,20 +49,9 @@ public sealed class SuccessOptions
     }
 
     /// <summary>
-    /// Sets the success envelope for responses with no payload (<c>http.Ok()</c> with no
-    /// arguments). The delegate receives the HTTP context and status code.
-    /// </summary>
-    /// <param name="factory">A delegate that builds the response body.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="factory"/> is <c>null</c>.</exception>
-    public void SetResponse(Func<HttpContext, int, object> factory)
-    {
-        EmptyFactory = factory ?? throw new ArgumentNullException(nameof(factory));
-    }
-
-    /// <summary>
-    /// Sets the success envelope by <see cref="Type"/>. Pass an <b>open generic</b> for
-    /// payload envelopes, or a <b>non-generic</b> type for no-payload envelopes
-    /// (<c>http.Ok()</c> with no arguments).
+    /// Sets the success envelope by <see cref="Type"/>. Pass an <b>open generic</b>
+    /// implementing <see cref="ISuccessEnvelope{T}"/> — one envelope covers every response,
+    /// payload or not.
     ///
     /// <para>
     /// <b>Open generic</b> — the type's single type parameter is closed with the payload
@@ -79,10 +61,10 @@ public sealed class SuccessOptions
     /// </para>
     ///
     /// <para>
-    /// <b>Non-generic</b> — pass a non-generic type for no-payload responses
-    /// (<c>http.Ok()</c> with no arguments). The type must have a
-    /// <c>public static From(HttpContext, int)</c> method. No
-    /// <see cref="ISuccessEnvelope{T}"/> contract is required.
+    /// <c>http.Ok()</c> carries no payload, so the closed type falls back to
+    /// <see cref="object"/>: the envelope's <c>Data</c> stays <c>null</c> and
+    /// <c>JsonIgnoreCondition.WhenWritingNull</c> omits the field. No separate
+    /// no-payload envelope is needed.
     /// </para>
     ///
     /// <para>
@@ -97,28 +79,19 @@ public sealed class SuccessOptions
     /// </para>
     /// </summary>
     /// <param name="envelopeType">
-    /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>,
-    /// <b>or</b> a non‑generic type for no-payload responses.
+    /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>.
     /// </param>
     /// <exception cref="InvalidOperationException">
-    /// The type is generic but does not implement <see cref="ISuccessEnvelope{T}"/>,
-    /// or is non‑generic and lacks a <c>From(HttpContext, int)</c> method,
-    /// or the <c>From</c> method is missing or inaccessible.
+    /// The type is not an open generic, does not implement <see cref="ISuccessEnvelope{T}"/>,
+    /// or its <c>From</c> method is missing or inaccessible.
     /// </exception>
     public void SetResponse(Type envelopeType)
     {
-        // Non-generic type → empty envelope (no payload, e.g. http.Ok() with no args).
         if (!envelopeType.IsGenericTypeDefinition)
-        {
-            var fromMethod = envelopeType.GetMethod("From", BindingFlags.Public | BindingFlags.Static)
-                ?? throw new InvalidOperationException(
-                    $"Success.SetResponse: '{envelopeType.FullName}' must have a " +
-                    $"public static 'From(HttpContext httpContext, int statusCode)' method.");
-
-            EmptyFactory = (http, statusCode) =>
-                fromMethod.Invoke(null, new object[] { http, statusCode })!;
-            return;
-        }
+            throw new InvalidOperationException(
+                $"Success.SetResponse: '{envelopeType.FullName}' must be an open generic " +
+                $"implementing ISuccessEnvelope<T> - pass typeof(SuccessResponse<>). One " +
+                $"envelope covers every response; there is no separate no-payload envelope.");
 
         var contract = FindContract(envelopeType)
             ?? throw new InvalidOperationException(
@@ -132,9 +105,7 @@ public sealed class SuccessOptions
 
         Factory = (data, meta, http, statusCode) =>
         {
-            var targetType = envelopeType.IsGenericTypeDefinition
-                ? envelopeType.MakeGenericType(data?.GetType() ?? typeof(object))
-                : envelopeType;
+            var targetType = envelopeType.MakeGenericType(data?.GetType() ?? typeof(object));
 
             var method = FromMethodCache.GetOrAdd(targetType, t =>
                 t.GetMethod("From", BindingFlags.Public | BindingFlags.Static)!);
