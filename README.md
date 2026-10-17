@@ -146,14 +146,16 @@ options.Success.SetResponse(typeof(SuccessResponse<>));    // one type, every re
 ### Metadata (`Meta`)
 
 Metadata is one type for the whole API — build it in the endpoint layer and hand it to
-`http.Ok(data, meta)`. Pagination follows the JSON:API convention: the fields sit
-**directly on** `meta`, not nested under a `pagination` property:
+`http.Ok(data, meta)`. Pagination sits **nested under `meta.pagination`**, and the whole
+`pagination` key is absent on an unpaged response:
 
 ```json
 {
   "data": [ ... ],
   "meta": {
-    "page": 1, "limit": 10, "totalItems": 100, "totalPages": 10, "hasMore": true,
+    "pagination": {
+      "page": 1, "limit": 10, "totalItems": 100, "totalPages": 10, "hasMore": true
+    },
     "timestamp": "2026-01-01T00:00:00+00:00"
   }
 }
@@ -162,22 +164,10 @@ Metadata is one type for the whole API — build it in the endpoint layer and ha
 ```csharp
 public sealed class Meta
 {
-    // Offset pagination — null when the response isn't offset-paged
-    public int? Page { get; init; }
-    public int? Limit { get; init; }
-    public long? TotalItems { get; init; }
-    public int? TotalPages { get; init; }
-
-    public bool? HasMore { get; init; }               // offset and cursor
-
-    // Cursor pagination — null when the response isn't cursor-paged
-    public string? PreviousCursor { get; init; }
-    public string? NextCursor { get; init; }
-
-    // Default value — no builder needed, the timestamp is there even for `new Meta()`.
+    public Pagination? Pagination { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    // One With... method per pagination strategy flattens that strategy's fields.
+    // One With... method per pagination strategy, nested under Pagination.
     // The service's result type carries the data; the incoming query carries the intent.
     public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query)
     {
@@ -185,36 +175,54 @@ public sealed class Meta
             ? 0
             : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
 
-        return new()
+        return new Meta
         {
-            Page = query.Page,
-            Limit = query.Limit,
-            TotalItems = result.TotalCount,
-            TotalPages = totalPages,
-            HasMore = query.Page < totalPages,
+            Pagination = new Pagination
+            {
+                Page = query.Page,
+                Limit = query.Limit,
+                TotalItems = result.TotalCount,
+                TotalPages = totalPages,
+                HasMore = query.Page < totalPages,
+            },
         };
     }
 
     public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
     {
-        PreviousCursor = result.PreviousCursor,
-        NextCursor = result.NextCursor,
-        HasMore = result.HasMore,
-        TotalItems = result.TotalCount,
+        Pagination = new Pagination
+        {
+            PreviousCursor = result.PreviousCursor,
+            NextCursor = result.NextCursor,
+            HasMore = result.HasMore,
+            TotalItems = result.TotalCount,
+        },
     };
+}
+
+// One Pagination type covers both strategies — every field nullable, so
+// JsonIgnoreCondition.WhenWritingNull drops the ones a strategy does not fill.
+public sealed class Pagination
+{
+    public int? Page { get; init; }
+    public int? Limit { get; init; }
+    public long? TotalItems { get; init; }
+    public int? TotalPages { get; init; }
+    public bool? HasMore { get; init; }
+    public string? PreviousCursor { get; init; }
+    public string? NextCursor { get; init; }
 }
 
 // Endpoint — offset-paged
 Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
     http.Ok(page.Items, new Meta().WithOffsetPagination(page, query)));
 
-// Endpoint — not paginated: no pagination fields, just the timestamp
+// Endpoint — not paginated: no pagination key, just the timestamp
 http.Ok(product, new Meta());
 ```
 
-Every pagination field is nullable, so `JsonIgnoreCondition.WhenWritingNull` omits the
-ones a strategy doesn't fill — an unpaged response emits just `timestamp`, and offset
-and cursor responses each emit their own subset.
+`Pagination` stays `null` for an unpaged response, so `WhenWritingNull` omits the whole
+`pagination` object rather than emitting an empty one.
 
 ### Pagination types
 
