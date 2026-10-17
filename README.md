@@ -178,16 +178,35 @@ public sealed class Meta
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
     // One With... method per pagination strategy flattens that strategy's fields.
-    public Meta WithOffsetPagination(OffsetPagintion p) => new()
+    // The service's result type carries the data; the incoming query carries the intent.
+    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query)
     {
-        Page = p.Page, Limit = p.Limit, TotalItems = p.TotalItems,
-        TotalPages = p.TotalPages, HasMore = p.HasMore,
+        var totalPages = result.TotalCount == 0
+            ? 0
+            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+
+        return new()
+        {
+            Page = query.Page,
+            Limit = query.Limit,
+            TotalItems = result.TotalCount,
+            TotalPages = totalPages,
+            HasMore = query.Page < totalPages,
+        };
+    }
+
+    public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
+    {
+        PreviousCursor = result.PreviousCursor,
+        NextCursor = result.NextCursor,
+        HasMore = result.HasMore,
+        TotalItems = result.TotalCount,
     };
 }
 
 // Endpoint — offset-paged
 Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
-    http.Ok(page.Items, new Meta().WithOffsetPagination(page.ToOffsetPagination(query))));
+    http.Ok(page.Items, new Meta().WithOffsetPagination(page, query)));
 
 // Endpoint — not paginated: no pagination fields, just the timestamp
 http.Ok(product, new Meta());
@@ -199,7 +218,9 @@ and cursor responses each emit their own subset.
 
 ### Pagination types
 
-Build your own query, result, and info types for each strategy. The library ships no pagination caps — the examples below show all three.
+Build your own query and result types for each strategy — nothing else. The endpoint already
+holds the incoming query, and `Meta` derives the flat response fields from the query plus the
+service's result. The library ships no pagination caps.
 
 Example — custom offset pagination:
 
@@ -220,34 +241,13 @@ public sealed class OffsetResult<T>
 {
     public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
     public long TotalCount { get; set; }
-
-    public OffsetPagination ToOffsetPagination(OffsetQuery query) =>
-        OffsetPagination.Create(query, (int)TotalCount);
 }
 
-// 3. Info — response metadata implementing IPaginationDetails
-public sealed class OffsetPagination : IPaginationDetails
-{
-    public bool HasMore => Page < TotalPages;
-    public int Page { get; set; }
-    public int Limit { get; set; }
-    public int TotalPages { get; set; }
-    public long? TotalItems { get; set; }
-
-    public static OffsetPagination Create(OffsetQuery query, int totalItems) => new()
-    {
-        Page = query.Page, Limit = query.Limit,
-        TotalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / query.Limit),
-        TotalItems = totalItems,
-    };
-}
-
-// 4. Endpoint — one-line call; the endpoint builds the app's Meta
-group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http, HttpContext context) =>
+// 3. Endpoint — one call; the endpoint builds the app's Meta
+group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
     Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
-        http.Ok(page.Items, new Meta()
-            .WithOffsetPagination(page.ToOffsetPagination(query))))
-    .Produces<SuccessResponse<Product[]>>();
+        http.Ok(page.Items, new Meta().WithOffsetPagination(page, query)))
+    .Produces<SuccessResponse<Product[]>>());
 ```
 
 Example — custom cursor pagination:
@@ -271,30 +271,12 @@ public sealed class CursorResult<T>
     public string? NextCursor { get; set; }
     public bool HasMore => NextCursor is not null;
     public long? TotalCount { get; set; }
-
-    public CursorPagination ToCursorPagination() => CursorPagination.Create(this);
 }
 
-// 3. Info
-public sealed class CursorPagination : IPaginationDetails
-{
-    public string? PreviousCursor { get; set; }
-    public string? NextCursor { get; set; }
-    public bool HasMore { get; set; }
-    public long? TotalItems { get; set; }
-
-    public static CursorPagination Create<T>(CursorResult<T> result) => new()
-    {
-        PreviousCursor = result.PreviousCursor, NextCursor = result.NextCursor,
-        HasMore = result.HasMore, TotalItems = result.TotalCount,
-    };
-}
-
-// 4. Endpoint
+// 3. Endpoint
 group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
     Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page =>
-        http.Ok(page.Items, new Meta()
-            .WithCursorPagination(page.ToCursorPagination()))))
+        http.Ok(page.Items, new Meta().WithCursorPagination(page))))
     .Produces<SuccessResponse<Product[]>>();
 ```
 

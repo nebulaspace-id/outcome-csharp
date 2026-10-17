@@ -63,7 +63,7 @@ public class ProductsController : ControllerBase
         return Outcome.Success(result.Items)
             .ToActionResult(_http, items => _http.Ok(
                 items,
-                new Meta().WithOffsetPagination(result.ToOffsetPagination(query))));
+                new Meta().WithOffsetPagination(result, query)));
     }
 
     // ── List (cursor) ───────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ public class ProductsController : ControllerBase
         return Outcome.Success(result.Items)
             .ToActionResult(_http, items => _http.Ok(
                 items,
-                new Meta().WithCursorPagination(result.ToCursorPagination())));
+                new Meta().WithCursorPagination(result)));
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────

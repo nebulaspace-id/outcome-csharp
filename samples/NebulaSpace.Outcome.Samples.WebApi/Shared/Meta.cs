@@ -1,5 +1,3 @@
-using NebulaSpace.Outcome.AspNetCore.Pagination;
-
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
@@ -54,27 +52,45 @@ public sealed class Meta
     // ── With — one per pagination strategy ────────────────────────────────────
 
     /// <summary>
-    /// Flattens <b>offset</b> pagination — <c>page</c>, <c>limit</c>, <c>totalItems</c>,
-    /// <c>totalPages</c>, and <c>hasMore</c> — onto this metadata.
+    /// Builds the <b>offset</b> pagination fields — <c>page</c>, <c>limit</c>,
+    /// <c>totalItems</c>, <c>totalPages</c>, and <c>hasMore</c> — from the service's
+    /// <see cref="OffsetResult{T}"/> and the incoming query.
     /// </summary>
-    public Meta WithOffsetPagination(OffsetPagintion pagination) => new()
+    /// <remarks>
+    /// <see cref="Page"/> and <see cref="Limit"/> echo the request because they are the
+    /// client's intent; <see cref="TotalPages"/> and <see cref="HasMore"/> are derived from
+    /// the service's <see cref="OffsetResult{T}.TotalCount"/>.
+    /// </remarks>
+    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query)
     {
-        Page = pagination.Page,
-        Limit = pagination.Limit,
-        TotalItems = pagination.TotalItems,
-        TotalPages = pagination.TotalPages,
-        HasMore = pagination.HasMore,
-    };
+        var totalPages = result.TotalCount == 0
+            ? 0
+            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+
+        return new Meta
+        {
+            Page = query.Page,
+            Limit = query.Limit,
+            TotalItems = result.TotalCount,
+            TotalPages = totalPages,
+            HasMore = query.Page < totalPages,
+        };
+    }
 
     /// <summary>
-    /// Flattens <b>cursor</b> pagination — <c>previousCursor</c>, <c>nextCursor</c>,
-    /// <c>hasMore</c>, and <c>totalItems</c> — onto this metadata.
+    /// Builds the <b>cursor</b> pagination fields — <c>previousCursor</c>,
+    /// <c>nextCursor</c>, <c>hasMore</c>, and <c>totalItems</c> — from the service's
+    /// <see cref="CursorResult{T}"/>.
     /// </summary>
-    public Meta WithCursorPagination(CursorPagination pagination) => new()
+    /// <remarks>
+    /// Takes no query: a cursor page is self-describing, so nothing is echoed from the
+    /// request — the service hands back both cursors and the count.
+    /// </remarks>
+    public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
     {
-        PreviousCursor = pagination.PreviousCursor,
-        NextCursor = pagination.NextCursor,
-        HasMore = pagination.HasMore,
-        TotalItems = pagination.TotalItems,
+        PreviousCursor = result.PreviousCursor,
+        NextCursor = result.NextCursor,
+        HasMore = result.HasMore,
+        TotalItems = result.TotalCount,
     };
 }
