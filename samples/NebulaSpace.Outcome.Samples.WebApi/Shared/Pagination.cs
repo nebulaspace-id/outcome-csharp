@@ -36,4 +36,43 @@ public sealed class Pagination
 
     /// <summary>Opaque cursor pointing to the next page; <c>null</c> on the last page.</summary>
     public string? NextCursor { get; init; }
+
+    // ── Factories — one per pagination strategy ───────────────────────────────
+
+    /// <summary>
+    /// Builds the <b>offset</b> pagination details from the service's
+    /// <see cref="OffsetResult{T}"/> and the incoming query: the request's
+    /// <see cref="Page"/> and <see cref="Limit"/> are echoed as the client's intent,
+    /// while <see cref="TotalPages"/> and <see cref="HasMore"/> are derived from the
+    /// service's <see cref="OffsetResult{T}.TotalCount"/>.
+    /// </summary>
+    public static Pagination Offset<T>(OffsetResult<T> result, OffsetQuery query)
+    {
+        var totalPages = result.TotalCount == 0
+            ? 0
+            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+
+        return new Pagination
+        {
+            Page = query.Page,
+            Limit = query.Limit,
+            TotalItems = result.TotalCount,
+            TotalPages = totalPages,
+            HasMore = query.Page < totalPages,
+        };
+    }
+
+    /// <summary>
+    /// Builds the <b>cursor</b> pagination details from the service's
+    /// <see cref="CursorResult{T}"/>. Takes no query: a cursor page is self-describing,
+    /// so nothing is echoed from the request — the service hands back both cursors and
+    /// the count.
+    /// </summary>
+    public static Pagination Cursor<T>(CursorResult<T> result) => new()
+    {
+        PreviousCursor = result.PreviousCursor,
+        NextCursor = result.NextCursor,
+        HasMore = result.HasMore,
+        TotalItems = result.TotalCount,
+    };
 }

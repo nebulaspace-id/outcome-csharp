@@ -33,48 +33,18 @@ public sealed class Meta
     /// <c>totalItems</c>, <c>totalPages</c>, and <c>hasMore</c> — built from the
     /// service's <see cref="OffsetResult{T}"/> and the incoming query.
     /// </summary>
-    /// <remarks>
-    /// <see cref="Pagination.Page"/> and <see cref="Pagination.Limit"/> echo the request
-    /// because they are the client's intent; <see cref="Pagination.TotalPages"/> and
-    /// <see cref="Pagination.HasMore"/> are derived from the service's
-    /// <see cref="OffsetResult{T}.TotalCount"/>.
-    /// </remarks>
-    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query)
+    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
     {
-        var totalPages = result.TotalCount == 0
-            ? 0
-            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
-
-        return new Meta
-        {
-            Pagination = new Pagination
-            {
-                Page = query.Page,
-                Limit = query.Limit,
-                TotalItems = result.TotalCount,
-                TotalPages = totalPages,
-                HasMore = query.Page < totalPages,
-            },
-        };
-    }
+        Pagination = Pagination.Offset(result, query),
+    };
 
     /// <summary>
     /// Nests the <b>cursor</b> pagination details — <c>previousCursor</c>,
     /// <c>nextCursor</c>, <c>hasMore</c>, and <c>totalItems</c> — from the service's
     /// <see cref="CursorResult{T}"/>.
     /// </summary>
-    /// <remarks>
-    /// Takes no query: a cursor page is self-describing, so nothing is echoed from the
-    /// request — the service hands back both cursors and the count.
-    /// </remarks>
     public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
     {
-        Pagination = new Pagination
-        {
-            PreviousCursor = result.PreviousCursor,
-            NextCursor = result.NextCursor,
-            HasMore = result.HasMore,
-            TotalItems = result.TotalCount,
-        },
+        Pagination = Pagination.Cursor(result),
     };
 }

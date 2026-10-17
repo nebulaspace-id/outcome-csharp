@@ -167,41 +167,21 @@ public sealed class Meta
     public Pagination? Pagination { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    // One With... method per pagination strategy, nested under Pagination.
-    // The service's result type carries the data; the incoming query carries the intent.
-    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query)
+    // One With... method per pagination strategy — Meta only nests, never computes.
+    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
     {
-        var totalPages = result.TotalCount == 0
-            ? 0
-            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
-
-        return new Meta
-        {
-            Pagination = new Pagination
-            {
-                Page = query.Page,
-                Limit = query.Limit,
-                TotalItems = result.TotalCount,
-                TotalPages = totalPages,
-                HasMore = query.Page < totalPages,
-            },
-        };
-    }
+        Pagination = Pagination.Offset(result, query),
+    };
 
     public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
     {
-        Pagination = new Pagination
-        {
-            PreviousCursor = result.PreviousCursor,
-            NextCursor = result.NextCursor,
-            HasMore = result.HasMore,
-            TotalItems = result.TotalCount,
-        },
+        Pagination = Pagination.Cursor(result),
     };
 }
 
 // One Pagination type covers both strategies — every field nullable, so
 // JsonIgnoreCondition.WhenWritingNull drops the ones a strategy does not fill.
+// The factories own the math, so Meta stays a dumb container.
 public sealed class Pagination
 {
     public int? Page { get; init; }
@@ -211,6 +191,33 @@ public sealed class Pagination
     public bool? HasMore { get; init; }
     public string? PreviousCursor { get; init; }
     public string? NextCursor { get; init; }
+
+    // Offset — the request's page/limit are echoed; totalPages/hasMore are derived
+    // from the service's TotalCount.
+    public static Pagination Offset<T>(OffsetResult<T> result, OffsetQuery query)
+    {
+        var totalPages = result.TotalCount == 0
+            ? 0
+            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+
+        return new Pagination
+        {
+            Page = query.Page,
+            Limit = query.Limit,
+            TotalItems = result.TotalCount,
+            TotalPages = totalPages,
+            HasMore = query.Page < totalPages,
+        };
+    }
+
+    // Cursor — self-describing, so nothing is echoed from the request.
+    public static Pagination Cursor<T>(CursorResult<T> result) => new()
+    {
+        PreviousCursor = result.PreviousCursor,
+        NextCursor = result.NextCursor,
+        HasMore = result.HasMore,
+        TotalItems = result.TotalCount,
+    };
 }
 
 // Endpoint — offset-paged
