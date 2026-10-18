@@ -1,6 +1,0 @@
-{
-  "name": "outcome-tools",
-  "version": "0.1.0",
-  "description": "Skills for using the NebulaSpace.Outcome result pattern library with ASP.NET Core: creating outcomes, failures, response envelopes, pagination, and exception handling.",
-  "skills": ["./skills/"]
-}
