@@ -323,8 +323,8 @@ bound value never leaves the query object unclamped.
 // Caps are your job, not the library's: clamp every value a client can send.
 public sealed class OffsetQuery : IPaginatedQuery
 {
-    public static int MaxPage = 25;
-    public static int MaxLimit = 50;
+    private const int MaxPage = 25;
+    private const int MaxLimit = 50;
 
     private int _page = 1;
     private int _limit = 10;
@@ -361,7 +361,7 @@ Cursor strategy, same shape:
 ```csharp
 public sealed class CursorQuery : IPaginatedQuery
 {
-    public static int MaxLimit = 50;
+    private const int MaxLimit = 50;
 
     private int _limit = 10;
 

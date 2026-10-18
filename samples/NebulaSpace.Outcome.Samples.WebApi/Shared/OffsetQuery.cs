@@ -10,7 +10,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <para>
 /// Demonstrates how users can build their own offset pagination query with
 /// app-specific caps. The bounds are written directly on this type as
-/// <b>static fields</b> — there is no options plumbing to configure them.
+/// <b>constants</b> — there is no options plumbing to configure them.
 /// </para>
 /// </summary>
 public sealed class OffsetQuery : IPaginatedQuery

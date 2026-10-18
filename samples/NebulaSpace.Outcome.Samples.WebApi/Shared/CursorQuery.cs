@@ -10,7 +10,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// <para>
 /// Demonstrates how users can build their own cursor pagination query with an
 /// app-specific cap. The bound is written directly on this type as a
-/// <b>static field</b> — there is no options plumbing to configure it.
+/// <b>constant</b> — there is no options plumbing to configure it.
 /// </para>
 /// </summary>
 public sealed class CursorQuery : IPaginatedQuery
