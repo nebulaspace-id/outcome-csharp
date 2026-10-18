@@ -7,15 +7,14 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void Create_CopiesCursorsFromResult()
     {
-        var query = new DefaultCursorQuery { Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "a", "b" },
+            Items = ["a", "b"],
             PreviousCursor = "prev-page",
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.Equal("prev-page", info.PreviousCursor);
         Assert.Equal("next-page", info.NextCursor);
@@ -25,15 +24,14 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void Create_FirstPage_HasNullPreviousCursor()
     {
-        var query = new DefaultCursorQuery { Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "a", "b" },
+            Items = ["a", "b"],
             PreviousCursor = null,
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.Null(info.PreviousCursor);
         Assert.Equal("next-page", info.NextCursor);
@@ -42,15 +40,14 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void Create_LastPage_HasNullNextCursor()
     {
-        var query = new DefaultCursorQuery { Cursor = "prev", Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "c", "d" },
+            Items = ["c", "d"],
             PreviousCursor = "prev-page",
             NextCursor = null,
             TotalCount = 37,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.Null(info.NextCursor);
         Assert.False(info.HasMore);
@@ -59,14 +56,13 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void HasMore_ComesFromResult()
     {
-        var query = new DefaultCursorQuery { Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "a" },
+            Items = ["a"],
             NextCursor = "next-page",
             TotalCount = 37,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.True(info.HasMore);
     }
@@ -74,14 +70,13 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void TotalItems_CanBeNull()
     {
-        var query = new DefaultCursorQuery { Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "a", "b" },
+            Items = ["a", "b"],
             NextCursor = "next-page",
             TotalCount = null,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.Null(info.TotalItems);
     }
@@ -89,14 +84,13 @@ public class DefaultCursorPaginationTests
     [Fact]
     public void Implements_IPaginationDetails()
     {
-        var query = new DefaultCursorQuery { Limit = 10 };
         var result = new DefaultCursorResult<string>
         {
-            Items = new[] { "a" },
+            Items = ["a"],
             NextCursor = "next-page",
             TotalCount = 10,
         };
-        var info = DefaultCursorPagination.Create(query, result);
+        var info = DefaultCursorPagination.Create(result);
 
         Assert.IsAssignableFrom<IPaginationDetails>(info);
     }

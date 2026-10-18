@@ -33,14 +33,16 @@ public class DefaultOffsetPaginationTests
     }
 
     [Fact]
-    public void Create_FromOffsetQuery_UsesOffsetQueryValues()
+    public void Create_FromResultAndQuery_EchoesQueryValues()
     {
         var query = new DefaultOffsetQuery { Page = 3, Limit = 5 };
-        var p = DefaultOffsetPagination.Create(query, totalItems: 42);
+        var result = new DefaultOffsetResult<string> { TotalCount = 42 };
+        var p = DefaultOffsetPagination.Create(result, query);
 
         Assert.Equal(3, p.Page);
         Assert.Equal(5, p.Limit);
         Assert.Equal(9, p.TotalPages); // ceil(42/5)
+        Assert.Equal(42, p.TotalItems);
     }
 
     [Fact]

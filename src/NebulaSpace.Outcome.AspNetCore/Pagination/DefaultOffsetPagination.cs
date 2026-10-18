@@ -7,7 +7,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// pagination through one type.
 ///
 /// <para>
-/// Use <see cref="Create(DefaultOffsetQuery,int)"/> from the service layer to construct it in one call.
+/// Use <see cref="Create{T}"/> from the endpoint to build the metadata in one call from
+/// the service's <see cref="DefaultOffsetResult{T}"/> and the incoming
+/// <see cref="DefaultOffsetQuery"/>.
 /// </para>
 /// </summary>
 public sealed class DefaultOffsetPagination : IPaginationDetails
@@ -19,19 +21,28 @@ public sealed class DefaultOffsetPagination : IPaginationDetails
     public bool HasMore => Page < TotalPages;
 
     /// <summary>The current 1‑based page number.</summary>
-    public int Page { get; set; }
+    public int Page { get; init; }
 
     /// <summary>Items per page the server returned for this request.</summary>
-    public int Limit { get; set; }
+    public int Limit { get; init; }
 
     /// <summary>
     /// Total number of pages (<c>0</c> when there are no items, otherwise
     /// <c>⌈totalItems / limit⌉</c>).
     /// </summary>
-    public int TotalPages { get; set; }
+    public int TotalPages { get; init; }
 
     /// <summary>Total items across all pages, or <c>null</c> when unknown.</summary>
-    public long? TotalItems { get; set; }
+    public long? TotalItems { get; init; }
+
+    /// <summary>
+    /// Creates <see cref="DefaultOffsetPagination"/> from the service's result and the
+    /// incoming query — the idiomatic one‑line call from the endpoint. The request's
+    /// <see cref="Page"/>/<see cref="Limit"/> are echoed as the client's intent, while
+    /// <see cref="TotalPages"/> is derived from the service's total count.
+    /// </summary>
+    public static DefaultOffsetPagination Create<T>(DefaultOffsetResult<T> result, DefaultOffsetQuery query) =>
+        Create(query.Page, query.Limit, (int)result.TotalCount);
 
     /// <summary>
     /// Creates <see cref="DefaultOffsetPagination"/> from raw pagination values, computing
@@ -45,13 +56,4 @@ public sealed class DefaultOffsetPagination : IPaginationDetails
         TotalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / limit),
         TotalItems = totalItems,
     };
-
-    /// <summary>
-    /// Creates <see cref="DefaultOffsetPagination"/> from a <see cref="DefaultOffsetQuery"/> and the total item
-    /// count — the idiomatic one‑line call from the service layer.
-    /// </summary>
-    /// <param name="query">The incoming pagination request.</param>
-    /// <param name="totalItems">Total number of items across all pages.</param>
-    public static DefaultOffsetPagination Create(DefaultOffsetQuery query, int totalItems) =>
-        Create(query.Page, query.Limit, totalItems);
 }

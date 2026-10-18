@@ -7,7 +7,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 ///
 /// <para>
 /// Use <see cref="Create{T}"/> from the endpoint to build the metadata in one call from
-/// the incoming <see cref="DefaultCursorQuery"/> and the service's <see cref="DefaultCursorResult{T}"/>.
+/// the service's <see cref="DefaultCursorResult{T}"/>.
 /// </para>
 /// </summary>
 public sealed class DefaultCursorPagination : IPaginationDetails
@@ -16,35 +16,36 @@ public sealed class DefaultCursorPagination : IPaginationDetails
     /// Opaque cursor pointing to the previous page. <c>null</c> when this is the first
     /// page (omitted from JSON via <c>JsonIgnoreCondition.WhenWritingNull</c>).
     /// </summary>
-    public string? PreviousCursor { get; set; }
+    public string? PreviousCursor { get; init; }
 
     /// <summary>
     /// Opaque cursor pointing to the next page. <c>null</c> when this is the last page
     /// (omitted from JSON via <c>JsonIgnoreCondition.WhenWritingNull</c>).
     /// </summary>
-    public string? NextCursor { get; set; }
+    public string? NextCursor { get; init; }
 
     /// <summary>
     /// Whether there is at least one more page of data after this one — from
     /// <see cref="DefaultCursorResult{T}.HasMore"/>.
     /// </summary>
-    public bool HasMore { get; set; }
+    public bool HasMore { get; init; }
 
     /// <summary>
     /// Total items across all pages, when the service provides it.
     /// <c>null</c> when unknown (omitted from JSON via
     /// <c>JsonIgnoreCondition.WhenWritingNull</c>).
     /// </summary>
-    public long? TotalItems { get; set; }
+    public long? TotalItems { get; init; }
 
     /// <summary>
-    /// Creates <see cref="DefaultCursorPagination"/> from the incoming query and the service's
-    /// cursor-paginated result — the idiomatic one‑line call from the endpoint.
+    /// Creates <see cref="DefaultCursorPagination"/> from the service's cursor-paginated
+    /// result — the idiomatic one‑line call from the endpoint. Takes no query: a cursor
+    /// page is self-describing, so nothing is echoed from the request — the service hands
+    /// back both cursors and the count.
     /// </summary>
     /// <typeparam name="T">The type of each item in the page.</typeparam>
-    /// <param name="query">The incoming cursor-pagination request.</param>
     /// <param name="result">The service's cursor-paginated result.</param>
-    public static DefaultCursorPagination Create<T>(DefaultCursorQuery query, DefaultCursorResult<T> result) => new()
+    public static DefaultCursorPagination Create<T>(DefaultCursorResult<T> result) => new()
     {
         PreviousCursor = result.PreviousCursor,
         NextCursor = result.NextCursor,
