@@ -30,10 +30,13 @@ public sealed class ProductService : IProductService
         return product; // implicit conversion: Product → Outcome<Product>
     }
 
-    public Shared.OffsetResult<Product> GetProducts(Shared.OffsetQuery query) =>
+    // Paged reads return Outcome<T> too: an implicit conversion lifts the repository's
+    // OffsetResult into a success, so the method stays ready to fail (a guard, a
+    // permission check, a downstream call) without changing the endpoint's shape.
+    public Outcome<Shared.OffsetResult<Product>> GetProducts(Shared.OffsetQuery query) =>
         _repo.GetAll(query);
 
-    public CursorResult<Product> GetProductsCursor(CursorQuery query) =>
+    public Outcome<CursorResult<Product>> GetProductsCursor(CursorQuery query) =>
         _repo.GetAllCursor(query);
 
     public async Task<Outcome<Product>> CreateProduct(CreateProductRequest request)

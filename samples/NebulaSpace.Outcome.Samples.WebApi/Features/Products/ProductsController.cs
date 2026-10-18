@@ -41,9 +41,11 @@ public class ProductsController : ControllerBase
     // Success → 201 with a derived Location header.
 
     [HttpPost]
-    public Task<IActionResult> Create([FromBody] CreateProductRequest request) =>
-        _service.CreateProduct(request)
-            .ToActionResultAsync(_http, product => _http.Created($"/products/{product.Id}", product));
+    public async Task<IActionResult> Create([FromBody] CreateProductRequest request)
+    {
+        var result = await _service.CreateProduct(request);
+        return result.ToActionResult(_http, product => _http.Created($"/products/{product.Id}", product));
+    }
 
     // ── Get one ──────────────────────────────────────────────────────────────
     // 404 becomes the error envelope automatically (filter pattern).
@@ -54,16 +56,18 @@ public class ProductsController : ControllerBase
 
     // ── List (offset) ────────────────────────────────────────────────────────
     // Custom offset pagination. Page/limit bound from the query string.
-    // The controller builds the app's metadata (pagination + per-request fields).
+    // The service returns Outcome<OffsetResult<Product>>, so ToActionResult maps the
+    // failure branch; the action only builds the app's metadata.
 
     [HttpGet]
     public IActionResult List([FromQuery] Shared.OffsetQuery query)
     {
         var result = _service.GetProducts(query);
-        return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(
-                items,
-                new Meta().WithOffsetPagination(result, query)));
+        return result.ToActionResult(_http, page =>
+        {
+            var meta = new Meta().SetPagination(page, query);
+            return _http.Ok(page.Items, meta);
+        });
     }
 
     // ── List (cursor) ───────────────────────────────────────────────────────
@@ -73,10 +77,11 @@ public class ProductsController : ControllerBase
     public IActionResult ListCursor([FromQuery] CursorQuery query)
     {
         var result = _service.GetProductsCursor(query);
-        return Outcome.Success(result.Items)
-            .ToActionResult(_http, items => _http.Ok(
-                items,
-                new Meta().WithCursorPagination(result)));
+        return result.ToActionResult(_http, page =>
+        {
+            var meta = new Meta().SetPagination(page);
+            return _http.Ok(page.Items, meta);
+        });
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────

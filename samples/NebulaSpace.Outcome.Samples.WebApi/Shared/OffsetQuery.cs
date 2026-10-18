@@ -19,13 +19,13 @@ public sealed class OffsetQuery : IPaginatedQuery
     /// <remarks>
     /// A <b>field</b>, not a settable property — see <see cref="DefaultOffsetQuery"/>.
     /// </remarks>
-    public static int MaxPage = 25;
+    private const int MaxPage = 25;
 
     /// <summary>Maximum items per page a client can request.</summary>
     /// <remarks>
     /// A <b>field</b>, not a settable property — see <see cref="DefaultOffsetQuery"/>.
     /// </remarks>
-    public static int MaxLimit = 50;
+    private const int MaxLimit = 50;
 
     private int _page = 1;
     private int _limit = 10;

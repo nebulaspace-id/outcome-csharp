@@ -90,8 +90,6 @@ builder.Services.AddOutcome(options =>
     // null Data that WhenWritingNull omits.
     options.Success.SetResponse(typeof(SuccessResponse<>));
 
-
-
     // Error envelope — compile-time safe (IErrorEnvelope is non-generic).
     options.Error.SetResponse<ErrorResponse>();
 

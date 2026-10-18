@@ -6,9 +6,4 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// (values), this is a real exception thrown by service code. The machine-readable
 /// error code (<c>"domain_error"</c>) is assigned in Program.cs by <c>MapException</c>.
 /// </summary>
-public sealed class DomainException : Exception
-{
-    public DomainException(string message) : base(message)
-    {
-    }
-}
+public sealed class DomainException(string message) : Exception(message);

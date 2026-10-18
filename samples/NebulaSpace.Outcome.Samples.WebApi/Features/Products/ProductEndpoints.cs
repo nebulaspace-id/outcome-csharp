@@ -25,36 +25,56 @@ public static class ProductEndpoints
         // Create — async service, validation (400) + uniqueness (409) handled by the
         // library. Success → 201 with a derived Location header.
         group.MapPost("/", (CreateProductRequest request, IProductService service, IHttpResultFactory http) =>
-            service.CreateProduct(request).ToResultAsync(http, product => http.Created($"/products/{product.Id}", product)))
+        {
+            var result = service.CreateProduct(request);
+            return result.ToResultAsync(http, product => http.Created($"/products/{product.Id}", product));
+        })
             .Produces<SuccessResponse<Product>>(StatusCodes.Status201Created)
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status409Conflict);
 
-        // Get one — 404 becomes the error envelope automatically. No Meta.Builder call:
-        // the envelope supplies the per-request metadata (timestamp + traceId) itself.
+        // Get one — 404 becomes the error envelope automatically. No Meta call:
+        // the envelope supplies the per-request metadata (timestamp) itself.
         group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
-            service.GetProduct(id).ToResult(http, product => http.Ok(product)))
+        {
+            var result = service.GetProduct(id);
+            return result.ToResult(http, product => http.Ok(product));
+        })
             .Produces<SuccessResponse<Product>>()
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 
         // List (offset) — custom offset pagination. Page/limit bound from the query string.
-        // The endpoint builds the app's meta; the library only carries it into the envelope.
+        // The service returns Outcome<OffsetResult<Product>>, so ToResult maps the
+        // failure branch for free; the handler only builds the app's meta.
         group.MapGet("/", (IProductService service, [AsParameters] Shared.OffsetQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProducts(query)).ToResult(http, page => http.Ok(
-                page.Items,
-                new Meta().WithOffsetPagination(page, query))))
+        {
+            var result = service.GetProducts(query);
+            return result.ToResult(http, page =>
+            {
+                var meta = new Meta().SetPagination(page, query);
+                return http.Ok(page.Items, meta);
+            });
+        })
             .Produces<SuccessResponse<Product[]>>();
 
         // List (cursor) — custom cursor pagination. Cursor/limit bound from the query string.
         group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
-            Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page => http.Ok(
-                page.Items,
-                new Meta().WithCursorPagination(page))))
+        {
+            var result = service.GetProductsCursor(query);
+            return result.ToResult(http, page =>
+            {
+                var meta = new Meta().SetPagination(page);
+                return http.Ok(page.Items, meta);
+            });
+        })
             .Produces<SuccessResponse<Product[]>>();
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
-            service.DeleteProduct(id).ToResult(http, _ => http.NoContent()))
+        {
+            var result = service.DeleteProduct(id);
+            return result.ToResult(http, _ => http.NoContent());
+        })
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 

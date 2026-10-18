@@ -19,7 +19,7 @@ public sealed class CursorQuery : IPaginatedQuery
     /// <remarks>
     /// A <b>field</b>, not a settable property — see <see cref="DefaultCursorQuery"/>.
     /// </remarks>
-    public static int MaxLimit = 50;
+    private const int MaxLimit = 50;
 
     private string? _cursor;
     private int _limit = 10;

@@ -10,18 +10,18 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 public sealed class CursorResult<T>
 {
     /// <summary>Items in the current page (never <c>null</c>).</summary>
-    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public IReadOnlyList<T> Items { get; init; } = [];
 
     /// <summary>
     /// Opaque cursor pointing to the previous page. <c>null</c> when this is the first
     /// page.
     /// </summary>
-    public string? PreviousCursor { get; set; }
+    public string? PreviousCursor { get; init; }
 
     /// <summary>
     /// Opaque cursor pointing to the next page. <c>null</c> when this is the last page.
     /// </summary>
-    public string? NextCursor { get; set; }
+    public string? NextCursor { get; init; }
 
     /// <summary>
     /// Whether there is at least one more page of data after this one.
@@ -30,5 +30,5 @@ public sealed class CursorResult<T>
     public bool HasMore => NextCursor is not null;
 
     /// <summary>Total count of items across all pages, when known.</summary>
-    public long? TotalCount { get; set; }
+    public long? TotalCount { get; init; }
 }

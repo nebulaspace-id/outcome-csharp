@@ -32,6 +32,19 @@ dotnet add package NebulaSpace.Outcome.AspNetCore
 Outcome<string> ok     = Outcome.Success("hello");
 Outcome<Unit> done     = Outcome.Success();                  // no payload
 Outcome<Order> order   = new Order(...);                     // implicit success
+Outcome<Order> missing = new ProductNotFound(id);            // implicit failure
+```
+
+The implicit conversions are what keep call sites free of boilerplate: a service method
+returning `Outcome<T>` can `return` a raw `T` (or a `Failure`) directly, so paginated
+reads and single reads share one shape — and both reach `ToResult`, which maps the
+failure branch for free.
+
+```csharp
+// Same method shape for a paged read and a single read
+public Outcome<OffsetResult<Product>> GetProducts(OffsetQuery q) => _repo.GetAll(q);
+public Outcome<Product> GetProduct(Guid id) =>
+    _repo.GetById(id) ?? new ProductNotFound(id);
 ```
 
 | Member | Description |
@@ -167,13 +180,14 @@ public sealed class Meta
     public Pagination? Pagination { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    // One With... method per pagination strategy — Meta only nests, never computes.
-    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
+    // One SetPagination overload per pagination strategy — Meta only nests,
+    // never computes.
+    public Meta SetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
     {
         Pagination = Pagination.Offset(result, query),
     };
 
-    public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
+    public Meta SetPagination<T>(CursorResult<T> result) => new()
     {
         Pagination = Pagination.Cursor(result),
     };
@@ -220,9 +234,13 @@ public sealed class Pagination
     };
 }
 
-// Endpoint — offset-paged
-Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
-    http.Ok(page.Items, new Meta().WithOffsetPagination(page, query)));
+// Endpoint — offset-paged (reads top-to-bottom, no deep chaining)
+var result = service.GetProducts(query);
+return result.ToResult(http, page =>
+{
+    var meta = new Meta().SetPagination(page, query);
+    return http.Ok(page.Items, meta);
+});
 
 // Endpoint — not paginated: no pagination key, just the timestamp
 http.Ok(product, new Meta());
@@ -233,9 +251,11 @@ http.Ok(product, new Meta());
 
 ### Pagination types
 
-Build your own query and result types for each strategy — nothing else. The endpoint already
-holds the incoming query, and `Meta` derives the flat response fields from the query plus the
-service's result. The library ships no pagination caps.
+Build your own query and result types for each strategy — nothing else. A paged read is a
+service call like any other, so the service returns `Outcome<T>` and the endpoint's
+`ToResult` maps the failure branch for free. The endpoint already holds the incoming
+query, and `Pagination` derives the flat response fields from the query plus the service's
+result. The library ships no pagination caps.
 
 Example — custom offset pagination:
 
@@ -254,15 +274,27 @@ public sealed class OffsetQuery : IPaginatedQuery
 // 2. Result — returned by the service layer
 public sealed class OffsetResult<T>
 {
-    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
-    public long TotalCount { get; set; }
+    public IReadOnlyList<T> Items { get; init; } = [];
+    public long TotalCount { get; init; }
 }
 
-// 3. Endpoint — one call; the endpoint builds the app's Meta
+// 3. Service — returns Outcome<T>, so it can fail like any other call.
+//    The implicit conversion lifts a successful page; a guard or a downstream
+//    failure becomes a Failure with no extra ceremony at the call site.
+public Outcome<OffsetResult<Product>> GetProducts(OffsetQuery query) =>
+    _repo.GetAll(query);
+
+// 4. Endpoint — ToResult maps the failure branch; the handler builds the app's Meta
 group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProducts(query)).ToResult(http, page =>
-        http.Ok(page.Items, new Meta().WithOffsetPagination(page, query)))
-    .Produces<SuccessResponse<Product[]>>());
+{
+    var result = service.GetProducts(query);
+    return result.ToResult(http, page =>
+    {
+        var meta = new Meta().SetPagination(page, query);
+        return http.Ok(page.Items, meta);
+    });
+})
+    .Produces<SuccessResponse<Product[]>>();
 ```
 
 Example — custom cursor pagination:
@@ -281,17 +313,27 @@ public sealed class CursorQuery : IPaginatedQuery
 // 2. Result — service returns this with opaque cursors
 public sealed class CursorResult<T>
 {
-    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
-    public string? PreviousCursor { get; set; }
-    public string? NextCursor { get; set; }
+    public IReadOnlyList<T> Items { get; init; } = [];
+    public string? PreviousCursor { get; init; }
+    public string? NextCursor { get; init; }
     public bool HasMore => NextCursor is not null;
-    public long? TotalCount { get; set; }
+    public long? TotalCount { get; init; }
 }
 
-// 3. Endpoint
+// 3. Service — same shape as any other call
+public Outcome<CursorResult<Product>> GetProductsCursor(CursorQuery query) =>
+    _repo.GetAllCursor(query);
+
+// 4. Endpoint
 group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery query, IHttpResultFactory http) =>
-    Outcome.Success(service.GetProductsCursor(query)).ToResult(http, page =>
-        http.Ok(page.Items, new Meta().WithCursorPagination(page))))
+{
+    var result = service.GetProductsCursor(query);
+    return result.ToResult(http, page =>
+    {
+        var meta = new Meta().SetPagination(page);
+        return http.Ok(page.Items, meta);
+    });
+})
     .Produces<SuccessResponse<Product[]>>();
 ```
 

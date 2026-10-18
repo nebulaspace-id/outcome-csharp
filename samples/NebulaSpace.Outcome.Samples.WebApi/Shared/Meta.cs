@@ -26,14 +26,14 @@ public sealed class Meta
     /// <summary>When this response was produced (UTC).</summary>
     public DateTimeOffset Timestamp { get; private init; } = DateTimeOffset.UtcNow;
 
-    // ── With — one per pagination strategy ────────────────────────────────────
+    // ── SetPagination — one overload per pagination strategy ──────────────────
 
     /// <summary>
     /// Nests the <b>offset</b> pagination details — <c>page</c>, <c>limit</c>,
     /// <c>totalItems</c>, <c>totalPages</c>, and <c>hasMore</c> — built from the
     /// service's <see cref="OffsetResult{T}"/> and the incoming query.
     /// </summary>
-    public Meta WithOffsetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
+    public Meta SetPagination<T>(OffsetResult<T> result, OffsetQuery query) => new()
     {
         Pagination = Pagination.Offset(result, query),
     };
@@ -43,7 +43,7 @@ public sealed class Meta
     /// <c>nextCursor</c>, <c>hasMore</c>, and <c>totalItems</c> — from the service's
     /// <see cref="CursorResult{T}"/>.
     /// </summary>
-    public Meta WithCursorPagination<T>(CursorResult<T> result) => new()
+    public Meta SetPagination<T>(CursorResult<T> result) => new()
     {
         Pagination = Pagination.Cursor(result),
     };

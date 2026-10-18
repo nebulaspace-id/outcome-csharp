@@ -10,8 +10,8 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 public sealed class OffsetResult<T>
 {
     /// <summary>Items in the current page (never <c>null</c>).</summary>
-    public IReadOnlyList<T> Items { get; set; } = Array.Empty<T>();
+    public IReadOnlyList<T> Items { get; init; } = [];
 
     /// <summary>Total count of items across all pages.</summary>
-    public long TotalCount { get; set; }
+    public long TotalCount { get; init; }
 }
