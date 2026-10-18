@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
@@ -34,6 +35,7 @@ public class ProductsController : ControllerBase
     // 200 with no payload, status-only envelope.
 
     [HttpGet("ping")]
+    [ProducesResponseType<SuccessResponse<Unit>>(StatusCodes.Status200OK)]
     public IActionResult Ping() => _http.Ok().ToActionResult();
 
     // ── Create ───────────────────────────────────────────────────────────────
@@ -41,6 +43,9 @@ public class ProductsController : ControllerBase
     // Success → 201 with a derived Location header.
 
     [HttpPost]
+    [ProducesResponseType<SuccessResponse<Product>>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreateProductRequest request)
     {
         var result = await _service.CreateProduct(request);
@@ -51,6 +56,8 @@ public class ProductsController : ControllerBase
     // 404 becomes the error envelope automatically (filter pattern).
 
     [HttpGet("{id:guid}")]
+    [ProducesResponseType<SuccessResponse<Product>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status404NotFound)]
     public Outcome<Product> Get(Guid id) =>
         _service.GetProduct(id);
 
@@ -60,6 +67,7 @@ public class ProductsController : ControllerBase
     // failure branch; the action only builds the app's metadata.
 
     [HttpGet]
+    [ProducesResponseType<SuccessResponse<Product[]>>(StatusCodes.Status200OK)]
     public IActionResult List([FromQuery] Shared.OffsetQuery query)
     {
         var result = _service.GetProducts(query);
@@ -74,6 +82,7 @@ public class ProductsController : ControllerBase
     // Cursor/limit bound from the query string.
 
     [HttpGet("cursor")]
+    [ProducesResponseType<SuccessResponse<Product[]>>(StatusCodes.Status200OK)]
     public IActionResult ListCursor([FromQuery] CursorQuery query)
     {
         var result = _service.GetProductsCursor(query);
@@ -88,6 +97,8 @@ public class ProductsController : ControllerBase
     // Success has no payload (Unit) → 204, or 404 when missing (filter pattern).
 
     [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status404NotFound)]
     public Outcome<Unit> Delete(Guid id) =>
         _service.DeleteProduct(id);
 }
