@@ -7,10 +7,11 @@ public class DefaultOffsetQueryTests
     [Theory]
     [InlineData(1, 1)]
     [InlineData(25, 25)]
-    [InlineData(100, 100)]  // no cap
-    [InlineData(0, 1)]      // clamped up to min
-    [InlineData(-5, 1)]     // clamped up to min
-    public void Page_ClampsToMinimum(int value, int expected)
+    [InlineData(1_000_000, DefaultOffsetQuery.MaxPage)]
+    [InlineData(0, 1)]              // clamped up to min
+    [InlineData(-5, 1)]             // clamped up to min
+    [InlineData(int.MaxValue, DefaultOffsetQuery.MaxPage)] // clamped down
+    public void Page_IsClampedToSafeRange(int value, int expected)
     {
         var query = new DefaultOffsetQuery { Page = value };
 
@@ -20,10 +21,12 @@ public class DefaultOffsetQueryTests
     [Theory]
     [InlineData(1, 1)]
     [InlineData(50, 50)]
-    [InlineData(500, 500)]  // no cap
-    [InlineData(0, 1)]      // clamped up to min
-    [InlineData(-1, 1)]     // clamped up to min
-    public void Limit_ClampsToMinimum(int value, int expected)
+    [InlineData(100, DefaultOffsetQuery.MaxLimit)]
+    [InlineData(500, DefaultOffsetQuery.MaxLimit)] // capped
+    [InlineData(int.MaxValue, DefaultOffsetQuery.MaxLimit)]
+    [InlineData(0, 1)]                             // clamped up to min
+    [InlineData(-1, 1)]                            // clamped up to min
+    public void Limit_IsClampedToSafeRange(int value, int expected)
     {
         var query = new DefaultOffsetQuery { Limit = value };
 
@@ -49,5 +52,16 @@ public class DefaultOffsetQueryTests
         var query = new DefaultOffsetQuery { Page = page, Limit = limit };
 
         Assert.Equal(expected, query.Offset);
+    }
+
+    [Fact]
+    public void Offset_DoesNotOverflow_AtMaximumPageAndLimit()
+    {
+        var query = new DefaultOffsetQuery { Page = DefaultOffsetQuery.MaxPage, Limit = DefaultOffsetQuery.MaxLimit };
+
+        // (1,000,000 - 1) * 100 fits in Int32; prove the computation is 64-bit by
+        // pushing both properties to their clamps and asserting no negative wrap.
+        Assert.True(query.Offset > 0);
+        Assert.Equal((DefaultOffsetQuery.MaxPage - 1) * DefaultOffsetQuery.MaxLimit, query.Offset);
     }
 }

@@ -7,21 +7,24 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// An <see cref="IResult"/> that writes an error envelope. When a typed envelope is
-/// configured (<c>options.Error.SetResponse(typeof(MyError))</c>), the body is the
-/// user‑defined type, built from the failure's HTTP intent (<see cref="FailureDetails"/>)
-/// and the current <see cref="HttpContext"/>, and serialized as‑is — so OpenAPI documents
-/// the exact shape. Otherwise the default RFC 7807 <see cref="DefaultErrorResponse"/>
-/// is written. The HTTP status always comes from <see cref="FailureDetails.StatusCode"/>.
+/// configured, the body is the user‑defined type; otherwise the default RFC 7807
+/// <see cref="DefaultErrorResponse"/> is written with
+/// <c>application/problem+json</c>. The HTTP status always comes from
+/// <see cref="FailureDetails.StatusCode"/>.
 /// </summary>
-public sealed class ErrorEnvelopeResult : IResult
+internal sealed class ErrorEnvelopeResult : IResult
 {
+    private const string ProblemJsonContentType = "application/problem+json";
+
     private readonly FailureDetails _details;
     private readonly OutcomeOptions _options;
+    private readonly string? _wwwAuthenticate;
 
-    public ErrorEnvelopeResult(FailureDetails details, OutcomeOptions options)
+    public ErrorEnvelopeResult(FailureDetails details, OutcomeOptions options, string? wwwAuthenticate = null)
     {
-        _details = details;
-        _options = options;
+        _details = details ?? throw new ArgumentNullException(nameof(details));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _wwwAuthenticate = wwwAuthenticate;
     }
 
     /// <inheritdoc />
@@ -30,18 +33,41 @@ public sealed class ErrorEnvelopeResult : IResult
 
     /// <summary>
     /// Writes the error envelope, honoring <paramref name="cancellationToken"/> so a
-    /// client that disconnects mid‑write doesn't waste the serialization work. Falls back
-    /// to <see cref="HttpContext.RequestAborted"/> when called through the interface.
+    /// client that disconnects mid‑write doesn't waste the serialization work.
     /// </summary>
     public async Task ExecuteAsync(HttpContext httpContext, CancellationToken cancellationToken)
     {
-        object envelope = _options.ErrorFactory is { } factory
-            ? factory(_details, httpContext)
-            : BuildDefaultErrorResponse(_details);
+        if (httpContext is null) throw new ArgumentNullException(nameof(httpContext));
+
+        var configuredFactory = _options.ErrorFactory;
 
         httpContext.Response.StatusCode = _details.StatusCode;
-        // Cast to object so System.Text.Json serializes the runtime type's full shape.
-        await httpContext.Response.WriteAsJsonAsync(envelope, cancellationToken);
+
+        if (_wwwAuthenticate is not null)
+            httpContext.Response.Headers.WWWAuthenticate = _wwwAuthenticate;
+
+        // Errors are request-specific and often unauthenticated; do not let a shared
+        // cache replay them.
+        if (_details.StatusCode is 401 or 403)
+            httpContext.Response.Headers.CacheControl = "no-store";
+
+        if (configuredFactory is not null)
+        {
+            var envelope = configuredFactory(_details, httpContext);
+            // Cast to object so System.Text.Json serializes the runtime type's full shape.
+            await httpContext.Response.WriteAsJsonAsync(
+                (object)envelope,
+                options: null,
+                contentType: "application/json",
+                cancellationToken);
+            return;
+        }
+
+        await httpContext.Response.WriteAsJsonAsync(
+            BuildDefaultErrorResponse(_details),
+            options: null,
+            contentType: ProblemJsonContentType,
+            cancellationToken);
     }
 
     /// <summary>Builds the default clean RFC 7807 problem response from a failure's intent.</summary>
@@ -50,5 +76,6 @@ public sealed class ErrorEnvelopeResult : IResult
         Title = ReasonPhrases.GetReasonPhrase(details.StatusCode),
         Status = details.StatusCode,
         Detail = details.Message ?? string.Empty,
+        Errors = details.Errors,
     };
 }

@@ -184,4 +184,128 @@ public class OutcomeTests
             Assert.Equal(failure, received);
         }
     }
+
+    public class HardeningTests
+    {
+        private sealed class TestFailure : Failure
+        {
+            public TestFailure() : base("boom", "test") { }
+        }
+
+        [Fact]
+        public void Default_IsSuccess_Throws()
+        {
+            Outcome<int> outcome = default;
+
+            Assert.Throws<InvalidOperationException>(() => outcome.IsSuccess);
+        }
+
+        [Fact]
+        public void Default_IsFailure_Throws()
+        {
+            Outcome<int> outcome = default;
+
+            Assert.Throws<InvalidOperationException>(() => outcome.IsFailure);
+        }
+
+        [Fact]
+        public void Default_Value_Throws()
+        {
+            Outcome<int> outcome = default;
+
+            Assert.Throws<InvalidOperationException>(() => outcome.Value);
+        }
+
+        [Fact]
+        public void Default_Match_Throws()
+        {
+            Outcome<int> outcome = default;
+
+            Assert.Throws<InvalidOperationException>(() => outcome.Match(v => v, _ => 0));
+        }
+
+        [Fact]
+        public void Default_ToString_IsUninitialized()
+        {
+            Outcome<int> outcome = default;
+
+            Assert.Equal("Uninitialized", outcome.ToString());
+        }
+
+        [Fact]
+        public void ImplicitConversion_FromNull_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+            {
+                Outcome<string> outcome = (string)null!;
+                _ = outcome;
+            });
+        }
+
+        [Fact]
+        public void Success_ExplicitNull_IsAllowed()
+        {
+            var outcome = Outcome<string>.Success(null!);
+
+            Assert.True(outcome.IsSuccess);
+            Assert.Null(outcome.Value);
+        }
+
+        [Fact]
+        public void Fail_WithNull_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => Outcome<int>.Fail(null!));
+        }
+
+        [Fact]
+        public void TryGetValue_OnSuccess_ReturnsTrue()
+        {
+            var outcome = Outcome.Success("value");
+
+            Assert.True(outcome.TryGetValue(out var value));
+            Assert.Equal("value", value);
+        }
+
+        [Fact]
+        public void TryGetValue_OnFailure_ReturnsFalse()
+        {
+            Outcome<string> outcome = Outcome.Fail(new TestFailure());
+
+            Assert.False(outcome.TryGetValue(out var value));
+            Assert.Null(value);
+        }
+
+        [Fact]
+        public void TryGetFailure_OnFailure_ReturnsTrue()
+        {
+            var failure = new TestFailure();
+            Outcome<string> outcome = Outcome.Fail(failure);
+
+            Assert.True(outcome.TryGetFailure(out var received));
+            Assert.Same(failure, received);
+        }
+
+        [Fact]
+        public void SaferAccessors_EchoTheState()
+        {
+            var success = Outcome.Success(1);
+            var failure = Outcome<int>.Fail(new TestFailure());
+
+            Assert.True(success.IsSuccess);
+            Assert.False(success.IsFailure);
+            Assert.False(failure.IsSuccess);
+            Assert.True(failure.IsFailure);
+        }
+
+        [Fact]
+        public void Equality_ComparesStateAndPayload()
+        {
+            Assert.Equal(Outcome.Success(1), Outcome.Success(1));
+            Assert.NotEqual(Outcome.Success(1), Outcome.Success(2));
+
+            var failure = new TestFailure();
+            Assert.Equal(Outcome<int>.Fail(failure), Outcome<int>.Fail(failure));
+            Assert.NotEqual(Outcome<int>.Fail(failure), Outcome<int>.Fail(new TestFailure()));
+        }
+    }
 }

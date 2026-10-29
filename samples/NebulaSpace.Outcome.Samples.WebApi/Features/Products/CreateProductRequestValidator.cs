@@ -3,9 +3,8 @@ using FluentValidation;
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 
 /// <summary>
-/// Validates an incoming <see cref="CreateProductRequest"/>.
-/// Thrown <see cref="ValidationException"/> is caught by the exception-handling
-/// middleware and mapped to 400 Bad Request with field errors.
+/// Validates an incoming <see cref="CreateProductRequest"/>. The service maps the
+/// result to a 400 <c>ValidationFailure</c> with field errors.
 /// </summary>
 public sealed class CreateProductRequestValidator : AbstractValidator<CreateProductRequest>
 {

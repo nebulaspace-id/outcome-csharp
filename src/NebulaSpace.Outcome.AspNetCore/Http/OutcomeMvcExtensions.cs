@@ -8,7 +8,7 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// Extension methods that convert an <see cref="Outcome{T}"/> directly to an
 /// <see cref="IActionResult"/> through the supplied <see cref="IHttpResultFactory"/>,
 /// without requiring an explicit <c>onSuccess</c> callback. The factory's default
-/// mapping is used: success → <see cref="IHttpResultFactory.Ok{T}"/>,
+/// mapping is used: success → <see cref="IHttpResultFactory.Ok{T}(T, object?)"/>,
 /// failure → <see cref="IHttpResultFactory.FromFailure"/>.
 /// </summary>
 public static class OutcomeMvcExtensions

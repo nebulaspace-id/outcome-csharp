@@ -64,6 +64,10 @@ internal static class ResultTestHelper
             StatusCode = context.Response.StatusCode,
             Body = body,
             Location = context.Response.Headers.Location.ToString(),
+            Headers = context.Response.Headers.ToDictionary(
+                h => h.Key,
+                h => h.Value.ToString(),
+                StringComparer.OrdinalIgnoreCase),
         };
     }
 
@@ -100,6 +104,10 @@ internal static class ResultTestHelper
             StatusCode = context.Response.StatusCode,
             Body = body,
             Location = context.Response.Headers.Location.ToString(),
+            Headers = context.Response.Headers.ToDictionary(
+                h => h.Key,
+                h => h.Value.ToString(),
+                StringComparer.OrdinalIgnoreCase),
         };
     }
 

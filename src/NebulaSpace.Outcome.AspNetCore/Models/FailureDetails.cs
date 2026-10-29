@@ -25,8 +25,17 @@ public sealed class FailureDetails
     /// human‑readable messages. One message is a single‑element array, several are a
     /// longer array. Omit for non‑validation errors.
     /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="statusCode"/> is outside the valid HTTP range (100–999).
+    /// </exception>
     public FailureDetails(int statusCode, string? message = null, string? code = null, IReadOnlyDictionary<string, string[]>? errors = null)
     {
+        if (statusCode is < 100 or > 999)
+            throw new ArgumentOutOfRangeException(
+                nameof(statusCode),
+                statusCode,
+                "HTTP status codes must be between 100 and 999.");
+
         StatusCode = statusCode;
         Message = message;
         Code = code;

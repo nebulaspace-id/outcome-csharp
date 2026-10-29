@@ -84,4 +84,39 @@ public class DefaultOffsetPaginationTests
 
         Assert.IsAssignableFrom<IPaginationDetails>(p);
     }
+
+    [Fact]
+    public void Create_WithHugeTotalItems_DoesNotOverflow()
+    {
+        // (n + limit - 1) / limit would overflow here; the library uses (n - 1) / limit + 1.
+        var p = DefaultOffsetPagination.Create(page: 1, limit: 100, totalItems: long.MaxValue);
+
+        Assert.Equal(int.MaxValue, p.TotalPages);
+        Assert.Equal(long.MaxValue, p.TotalItems);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Create_RejectsNonPositivePage(int page)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => DefaultOffsetPagination.Create(page, limit: 10, totalItems: 1));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Create_RejectsNonPositiveLimit(int limit)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => DefaultOffsetPagination.Create(page: 1, limit, totalItems: 1));
+    }
+
+    [Fact]
+    public void Create_RejectsNegativeTotalItems()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => DefaultOffsetPagination.Create(page: 1, limit: 10, totalItems: -1));
+    }
 }

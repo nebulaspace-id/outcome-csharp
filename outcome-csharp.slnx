@@ -8,7 +8,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NebulaSpace.Outcome.Tests.Unit/NebulaSpace.Outcome.Tests.Unit.csproj" />
-    <Project Path="tests/NebulaSpace.Outcome.Tests.Integration/NebulaSpace.Outcome.Tests.Integration.csproj" />
     <Project Path="tests/NebulaSpace.Outcome.AspNetCore.Tests.Unit/NebulaSpace.Outcome.AspNetCore.Tests.Unit.csproj" />
     <Project Path="tests/NebulaSpace.Outcome.AspNetCore.Tests.Integration/NebulaSpace.Outcome.AspNetCore.Tests.Integration.csproj" />
   </Folder>

@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
-using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.AspNetCore.Options;
 
@@ -10,18 +8,23 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 /// Options for the Outcome ASP.NET Core integration, configured at startup via
 /// <c>AddOutcome</c>. One object configures successes, errors, failure/exception
 /// mappings, and exception-handling behavior — no separate registrations.
+///
+/// <para>
+/// Configure it once inside the <c>AddOutcome</c> callback. After startup the instance is
+/// frozen; later mutations throw <see cref="InvalidOperationException"/>.
+/// </para>
 /// </summary>
 /// <example>
 /// <code>
 /// builder.Services.AddOutcome(options =>
 /// {
-///     options.Success.SetResponse&lt;SuccessResponse&gt;();
+///     options.Success.SetResponse(typeof(SuccessResponse&lt;&gt;));
 ///     options.Error.SetResponse&lt;ErrorResponse&gt;();
 ///     options.Error.MapFailure&lt;QuotaExceededFailure&gt;(f =>
 ///         new FailureDetails(422, f.Message, f.Code));
 ///     options.Error.MapException&lt;DomainException&gt;(ex =>
 ///         new FailureDetails(422, ex.Message, ex.Code));
-///     options.Error.IncludeExceptionDetails = env.IsDevelopment();
+///     options.Error.IncludeExceptionDetails = builder.Environment.IsDevelopment();
 /// });
 /// </code>
 /// </example>
@@ -52,4 +55,10 @@ public sealed class OutcomeOptions
 
     internal bool TryGetExceptionMapper(Type type, out Func<Exception, FailureDetails> mapper) =>
         Error.TryGetExceptionMapper(type, out mapper);
+
+    internal void Freeze()
+    {
+        Success.Freeze();
+        Error.Freeze();
+    }
 }

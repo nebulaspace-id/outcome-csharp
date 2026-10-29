@@ -45,11 +45,17 @@ public sealed class DefaultCursorPagination : IPaginationDetails
     /// </summary>
     /// <typeparam name="T">The type of each item in the page.</typeparam>
     /// <param name="result">The service's cursor-paginated result.</param>
-    public static DefaultCursorPagination Create<T>(DefaultCursorResult<T> result) => new()
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> is <c>null</c>.</exception>
+    public static DefaultCursorPagination Create<T>(DefaultCursorResult<T> result)
     {
-        PreviousCursor = result.PreviousCursor,
-        NextCursor = result.NextCursor,
-        HasMore = result.HasMore,
-        TotalItems = result.TotalCount,
-    };
+        if (result is null) throw new ArgumentNullException(nameof(result));
+
+        return new DefaultCursorPagination
+        {
+            PreviousCursor = result.PreviousCursor,
+            NextCursor = result.NextCursor,
+            HasMore = result.HasMore,
+            TotalItems = result.TotalCount,
+        };
+    }
 }

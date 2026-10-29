@@ -1,20 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
-        <Version>0.7.0</Version>
+        <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageSupportedTargetFramework Include="net7.0" />
-        <PackageSupportedTargetFramework Include="net8.0" />
-        <PackageSupportedTargetFramework Include="net9.0" />
-        <PackageSupportedTargetFramework Include="net10.0" />
+        <!-- SourceLink lets consumers step into the package's source and attach a debugger. -->
+        <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>
-      <FrameworkReference Include="Microsoft.AspNetCore.App" />
-      <ProjectReference Include="..\NebulaSpace.Outcome\NebulaSpace.Outcome.csproj" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <ProjectReference Include="..\NebulaSpace.Outcome\NebulaSpace.Outcome.csproj" />
     </ItemGroup>
 
 </Project>

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using NebulaSpace.Outcome.AspNetCore.Middleware;
+using NebulaSpace.Outcome.AspNetCore.Options;
 
 namespace NebulaSpace.Outcome.AspNetCore.Extensions;
 
@@ -13,15 +14,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Extensions;
 public static class OutcomeExceptionHandlerExtensions
 {
     /// <summary>
-    /// Adds the middleware to the pipeline. Should be registered <b>EARLY</b> (before
-    /// routing) so it catches exceptions from downstream middleware and endpoints alike.
-    ///
-    /// <para>
-    /// Requires <see cref="OutcomeHttpServiceCollectionExtensions.AddOutcome"/> in
-    /// <c>ConfigureServices</c> — that call registers <c>OutcomeOptions</c>,
-    /// <c>IHttpResultFactory</c>, and the middleware itself. No separate registration
-    /// is needed for exception handling.
-    /// </para>
+    /// Adds the middleware to the pipeline. Register it <b>FIRST</b> so it wraps rate
+    /// limiting, routing, authentication, and endpoints alike.
     ///
     /// <para>
     /// Middleware runs outer‑to‑inner: a middleware listed first wraps everything after
@@ -30,14 +24,27 @@ public static class OutcomeExceptionHandlerExtensions
     /// still produces the envelope.
     /// </para>
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="OutcomeHttpServiceCollectionExtensions.AddOutcome"/> was not called.
+    /// </exception>
     /// <example>
     /// <code>
     /// var app = builder.Build();
-    /// app.UseOutcomeExceptionHandler(); // BEFORE routing
+    /// app.UseOutcomeExceptionHandler(); // FIRST — before rate limiting and routing
+    /// app.UseRateLimiter();
     /// app.UseRouting();
     /// app.MapEndpoints();
     /// </code>
     /// </example>
     public static IApplicationBuilder UseOutcomeExceptionHandler(this IApplicationBuilder app)
-        => app.UseMiddleware<OutcomeExceptionMiddleware>();
+    {
+        if (app.ApplicationServices.GetService(typeof(OutcomeOptions)) is null)
+        {
+            throw new InvalidOperationException(
+                "UseOutcomeExceptionHandler requires AddOutcome(...) to be called when registering services. " +
+                "Add builder.Services.AddOutcome() before building the application.");
+        }
+
+        return app.UseMiddleware<OutcomeExceptionMiddleware>();
+    }
 }

@@ -4,10 +4,12 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// Marker interface for <c>[AsParameters]</c>-bound pagination query types.
 ///
 /// <para>
-/// The marker carries no members and enforces no limits — the library
-/// ships no pagination caps. <c>Page</c>/<c>Limit</c> on the built-in
-/// queries are clamped to a minimum of 1 only. If you need maximum
-/// bounds, implement them in your own query type.
+/// The marker carries no members. The library's built-in query types clamp their values
+/// to safe bounds — <see cref="DefaultOffsetQuery"/> caps page at
+/// <see cref="DefaultOffsetQuery.MaxPage"/> and limit at
+/// <see cref="DefaultOffsetQuery.MaxLimit"/>; <see cref="DefaultCursorQuery"/> caps limit
+/// at <see cref="DefaultCursorQuery.MaxLimit"/>. A custom query type should apply its own
+/// policy, including clamping every client-supplied value.
 /// </para>
 /// </summary>
 /// <example>
@@ -17,8 +19,8 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 ///     private int _page = 1;
 ///     private int _limit = 10;
 ///
-///     public int Page  { get => _page;  set => _page  = Math.Max(1, value); }
-///     public int Limit { get => _limit; set => _limit = Math.Max(1, value); }
+///     public int Page  { get => _page;  set => _page  = Math.Clamp(value, 1, 1_000); }
+///     public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, 100); }
 /// }
 /// </code>
 /// </example>

@@ -205,6 +205,74 @@ public class OutcomeExceptionMiddlewareTests
         Assert.Equal("conflict", doc.RootElement.GetProperty("message").GetString());
     }
 
+    // --- Bad requests, aborts, and header preservation ---
+
+    [Fact]
+    public async Task BadHttpRequestException_KeepsItsStatusCode()
+    {
+        await using var scope = await CreateHost(
+            endpoint: _ => throw new BadHttpRequestException("malformed body", StatusCodes.Status400BadRequest));
+
+        using var response = await scope.Client.GetAsync("/");
+
+        Assert.Equal(StatusCodes.Status400BadRequest, (int)response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("The request could not be processed.", doc.RootElement.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task CorrelatedHeaders_SurviveTheErrorResponse()
+    {
+        await using var scope = await CreateHost(endpoint: ctx =>
+        {
+            ctx.Response.Headers["Access-Control-Allow-Origin"] = "https://app.example";
+            ctx.Response.Headers.Vary = "Origin";
+            throw new InvalidOperationException("boom");
+        });
+
+        using var response = await scope.Client.GetAsync("/");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, (int)response.StatusCode);
+        Assert.Equal("https://app.example", response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.Contains("Origin", string.Join(",", response.Headers.GetValues("Vary")));
+    }
+
+    [Fact]
+    public async Task ClientAbort_IsRethrown_WithoutWritingA500()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddOutcome();
+        await using var provider = services.BuildServiceProvider();
+
+        var middleware = new OutcomeExceptionMiddleware(
+            provider.GetRequiredService<IHttpResultFactory>(),
+            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<OutcomeExceptionMiddleware>>(),
+            provider.GetRequiredService<OutcomeOptions>());
+
+        var context = new DefaultHttpContext { RequestServices = provider };
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        context.RequestAborted = cts.Token;
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => middleware.InvokeAsync(
+            context,
+            _ => throw new OperationCanceledException(cts.Token)));
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public void UseOutcomeExceptionHandler_WithoutAddOutcome_Throws()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+
+        var app = builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => app.UseOutcomeExceptionHandler());
+    }
+
     /// <summary>Keeps the TestServer + client alive together for the duration of a test.</summary>
     private sealed class TestHostScope : IAsyncDisposable
     {

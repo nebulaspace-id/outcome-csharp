@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,11 +13,16 @@ namespace NebulaSpace.Outcome.AspNetCore.Mvc;
 /// or register globally via <c>AddOutcomeMvcFilter()</c>.
 ///
 /// <para>
-/// When an action returns an <see cref="Outcome{T}"/> (directly or wrapped in
-/// <see cref="ObjectResult"/>), the filter resolves <see cref="IHttpResultFactory"/> from DI
-/// and maps success → <c>200 OK</c>, failure → the mapped error response. Dispatch goes
-/// through the <see cref="IOutcome"/> interface — no reflection.
+/// Mapping: failure → the configured error response; success with a payload → <c>200 OK</c>;
+/// success with <see cref="Unit"/> → <c>204 No Content</c> (a payload-less outcome has no
+/// body to serialize). Register the filter globally and return <c>Outcome&lt;T&gt;</c>
+/// directly — no reflection, the boxed outcome dispatches through <see cref="IOutcome"/>.
 /// Non-<see cref="Outcome{T}"/> values pass through untouched.
+/// </para>
+///
+/// <para>
+/// Need a 200 body for a <see cref="Unit"/> success, or custom metadata? Use
+/// <c>outcome.ToActionResult(http, onSuccess)</c> instead of the filter.
 /// </para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
@@ -29,9 +35,19 @@ public sealed class OutcomeResultAttribute : Attribute, IAsyncResultFilter
         {
             var factory = context.HttpContext.RequestServices.GetRequiredService<IHttpResultFactory>();
 
-            var inner = outcome.IsSuccess
-                ? factory.Ok(outcome.Value)
-                : factory.FromFailure(outcome.Failure);
+            IResult inner;
+            if (!outcome.IsSuccess)
+            {
+                inner = factory.FromFailure(outcome.Failure!);
+            }
+            else if (outcome.Value is Unit)
+            {
+                inner = factory.NoContent();
+            }
+            else
+            {
+                inner = factory.Ok(outcome.Value);
+            }
 
             context.Result = new OutcomeActionResult(inner);
         }

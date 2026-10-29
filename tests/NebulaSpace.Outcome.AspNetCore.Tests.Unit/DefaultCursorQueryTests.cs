@@ -16,10 +16,12 @@ public class DefaultCursorQueryTests
     [Theory]
     [InlineData(1, 1)]
     [InlineData(50, 50)]
-    [InlineData(500, 500)]  // no cap
-    [InlineData(0, 1)]      // clamped up to min
-    [InlineData(-1, 1)]     // clamped up to min
-    public void Limit_ClampsToMinimum(int value, int expected)
+    [InlineData(100, DefaultCursorQuery.MaxLimit)]
+    [InlineData(500, DefaultCursorQuery.MaxLimit)] // capped
+    [InlineData(int.MaxValue, DefaultCursorQuery.MaxLimit)]
+    [InlineData(0, 1)]                             // clamped up to min
+    [InlineData(-1, 1)]                            // clamped up to min
+    public void Limit_IsClampedToSafeRange(int value, int expected)
     {
         var query = new DefaultCursorQuery { Limit = value };
 

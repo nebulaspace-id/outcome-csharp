@@ -5,10 +5,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 
 /// <summary>
 /// Thin adapter that bridges any <see cref="IResult"/> into MVC's
-/// <see cref="IActionResult"/> pipeline. The existing envelope rendering, failure mapping,
-/// and serialization logic in <see cref="ErrorEnvelopeResult"/>,
-/// <see cref="SuccessEnvelopeResult{T}"/>, and <see cref="CreatedResult{T}"/> is reused
-/// verbatim — zero duplication.
+/// <see cref="IActionResult"/> pipeline. The envelope rendering, failure mapping, and
+/// serialization logic in <see cref="ErrorEnvelopeResult"/> and
+/// <see cref="SuccessEnvelopeResult{T}"/> is reused verbatim — zero duplication.
 ///
 /// <para>
 /// Works because MVC's <see cref="ActionContext"/> carries the same
@@ -16,12 +15,12 @@ namespace NebulaSpace.Outcome.AspNetCore.Http;
 /// expects.
 /// </para>
 /// </summary>
-public sealed class OutcomeActionResult : IActionResult
+internal sealed class OutcomeActionResult : IActionResult
 {
     private readonly IResult _inner;
 
     /// <summary>
-    /// Wraps an <see cref="IResult"/> so it flows through MVC's filter pipeline.
+    /// Wraps an <see cref="IResult"/> so it flows through MVC's result pipeline.
     /// </summary>
     /// <param name="inner">The result produced by <see cref="IHttpResultFactory"/>.</param>
     public OutcomeActionResult(IResult inner)

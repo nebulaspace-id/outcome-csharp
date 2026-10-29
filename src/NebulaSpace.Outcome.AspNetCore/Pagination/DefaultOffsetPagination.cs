@@ -7,9 +7,9 @@ namespace NebulaSpace.Outcome.AspNetCore.Pagination;
 /// pagination through one type.
 ///
 /// <para>
-/// Use <see cref="Create{T}"/> from the endpoint to build the metadata in one call from
-/// the service's <see cref="DefaultOffsetResult{T}"/> and the incoming
-/// <see cref="DefaultOffsetQuery"/>.
+/// Use <see cref="Create{T}(DefaultOffsetResult{T}, DefaultOffsetQuery)"/> from the
+/// endpoint to build the metadata in one call from the service's
+/// <see cref="DefaultOffsetResult{T}"/> and the incoming <see cref="DefaultOffsetQuery"/>.
 /// </para>
 /// </summary>
 public sealed class DefaultOffsetPagination : IPaginationDetails
@@ -32,7 +32,7 @@ public sealed class DefaultOffsetPagination : IPaginationDetails
     /// </summary>
     public int TotalPages { get; init; }
 
-    /// <summary>Total items across all pages, or <c>null</c> when unknown.</summary>
+    /// <summary>Total items across all pages, when known.</summary>
     public long? TotalItems { get; init; }
 
     /// <summary>
@@ -41,19 +41,56 @@ public sealed class DefaultOffsetPagination : IPaginationDetails
     /// <see cref="Page"/>/<see cref="Limit"/> are echoed as the client's intent, while
     /// <see cref="TotalPages"/> is derived from the service's total count.
     /// </summary>
-    public static DefaultOffsetPagination Create<T>(DefaultOffsetResult<T> result, DefaultOffsetQuery query) =>
-        Create(query.Page, query.Limit, (int)result.TotalCount);
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="result"/> or <paramref name="query"/> is <c>null</c>.
+    /// </exception>
+    public static DefaultOffsetPagination Create<T>(DefaultOffsetResult<T> result, DefaultOffsetQuery query)
+    {
+        if (result is null) throw new ArgumentNullException(nameof(result));
+        if (query is null) throw new ArgumentNullException(nameof(query));
+
+        return Create(query.Page, query.Limit, result.TotalCount);
+    }
 
     /// <summary>
     /// Creates <see cref="DefaultOffsetPagination"/> from raw pagination values, computing
     /// <see cref="TotalPages"/> from <paramref name="totalItems"/> and
-    /// <paramref name="limit"/>.
+    /// <paramref name="limit"/>. All arithmetic is 64‑bit so large counts cannot overflow
+    /// into a negative page count.
     /// </summary>
-    public static DefaultOffsetPagination Create(int page, int limit, int totalItems) => new()
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="page"/> or <paramref name="limit"/> is less than 1, or
+    /// <paramref name="totalItems"/> is negative.
+    /// </exception>
+    public static DefaultOffsetPagination Create(int page, int limit, long totalItems)
     {
-        Page = page,
-        Limit = limit,
-        TotalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / limit),
-        TotalItems = totalItems,
-    };
+        if (page < 1) throw new ArgumentOutOfRangeException(nameof(page), page, "Page must be at least 1.");
+        if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit), limit, "Limit must be at least 1.");
+        if (totalItems < 0) throw new ArgumentOutOfRangeException(nameof(totalItems), totalItems, "Total items cannot be negative.");
+
+        return new DefaultOffsetPagination
+        {
+            Page = page,
+            Limit = limit,
+            TotalPages = ToTotalPages(totalItems, limit),
+            TotalItems = totalItems,
+        };
+    }
+
+    /// <summary>Creates <see cref="DefaultOffsetPagination"/> from raw <see cref="int"/> values.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="page"/> or <paramref name="limit"/> is less than 1, or
+    /// <paramref name="totalItems"/> is negative.
+    /// </exception>
+    public static DefaultOffsetPagination Create(int page, int limit, int totalItems) =>
+        Create(page, limit, (long)totalItems);
+
+    private static int ToTotalPages(long totalItems, int limit)
+    {
+        if (totalItems == 0) return 0;
+
+        // (n - 1) / limit + 1 avoids the overflow of (n + limit - 1) when n is near long.MaxValue.
+        var pages = (totalItems - 1) / limit + 1;
+        return pages >= int.MaxValue ? int.MaxValue : (int)pages;
+    }
 }

@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -6,135 +8,215 @@ using NebulaSpace.Outcome.AspNetCore.Models;
 namespace NebulaSpace.Outcome.AspNetCore.Options;
 
 /// <summary>
-/// Configuration for the success envelope: whether successful responses are wrapped, and
-/// — if so — in which type. When no envelope is set, successful responses are wrapped in
-/// <c>DefaultSuccessResponse&lt;T&gt;</c> (or returned raw when <see cref="Enabled"/> is
-/// <c>false</c>).
+/// Configuration for the success envelope. Access via <c>options.Success</c> from
+/// <see cref="OutcomeOptions"/>.
 ///
 /// <para>
-/// The envelope receives the app's response metadata as an <see cref="object"/> — the
-/// metadata's type is the app's business and the library never inspects it.
+/// By default the success envelope is <see cref="DefaultSuccessResponse{T}"/>:
+/// <c>{ statusCode, data, meta? }</c>. Use
+/// <see cref="SetResponse(Type)"/> or <see cref="SetResponse(Func{object?, object?, HttpContext, int, object})"/> to make it
+/// your own.
+/// </para>
+///
+/// <para>
+/// Configure this once inside <c>AddOutcome(options =&gt; ...)</c>. After startup the
+/// options are frozen and every mutator throws <see cref="InvalidOperationException"/>.
 /// </para>
 /// </summary>
 public sealed class SuccessOptions
 {
-    /// <summary>
-    /// Whether successful responses are wrapped in a success envelope. Default <c>true</c>.
-    /// When <c>false</c>, <c>http.Ok(data)</c> and <c>http.Created(data, ...)</c> return
-    /// the raw payload directly — no wrapper, no <c>statusCode</c>.
-    /// </summary>
-    public bool Enabled { get; set; } = true;
+    private bool _frozen;
+    private bool _enabled = true;
+
+    // ── Envelope ──────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the concrete envelope instance from the payload, the app's metadata, the
-    /// current request, and the HTTP status. <c>null</c> until a <c>SetResponse</c>
-    /// overload is called; when <c>null</c> the library falls back to
-    /// <see cref="DefaultSuccessResponse{T}"/>.
+    /// Builds a concrete envelope instance for one success response. <c>null</c> until a
+    /// <c>SetResponse</c> overload is called, after which success results use it instead
+    /// of <see cref="DefaultSuccessResponse{T}"/>.
     /// </summary>
     internal Func<object?, object?, HttpContext, int, object>? Factory { get; private set; }
 
     /// <summary>
-    /// Stores the factory delegate as‑is — every request is a plain delegate call, zero
-    /// reflection. Useful when the envelope shape is built inline or the constructor needs
-    /// extra wiring, and AOT‑safe.
+    /// Whether success responses are wrapped in the configured envelope. Default
+    /// <c>true</c>. Set to <c>false</c> to return the payload raw (e.g. an API that must
+    /// not have a success envelope).
     /// </summary>
-    /// <param name="factory">
-    /// A delegate that builds the response body from the payload, the app's metadata,
-    /// the request, and the status code.
-    /// </param>
-    /// <exception cref="ArgumentNullException"><paramref name="factory"/> is <c>null</c>.</exception>
-    public void SetResponse(Func<object?, object?, HttpContext, int, object> factory)
+    public bool Enabled
     {
-        Factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        get => _enabled;
+        set
+        {
+            ThrowIfFrozen();
+            _enabled = value;
+        }
     }
 
     /// <summary>
-    /// Sets the success envelope by <see cref="Type"/>. Pass an <b>open generic</b>
-    /// implementing <see cref="ISuccessEnvelope{T}"/> — one envelope covers every response,
-    /// payload or not.
+    /// Sets the success envelope to an <b>open generic</b> type implementing
+    /// <see cref="ISuccessEnvelope{T}"/>. The library closes <c>T</c> with the payload's
+    /// runtime type per request, so Swagger documents <c>Data: Order</c> rather than
+    /// <c>Data: object</c>.
     ///
     /// <para>
-    /// <b>Open generic</b> — the type's single type parameter is closed with the payload
-    /// type per request, so Swagger sees <c>Data: Order</c> rather than <c>Data: object</c>.
-    /// The app's metadata arrives in the envelope as an <see cref="object"/> and needs no
-    /// type parameter of its own.
-    /// </para>
-    ///
-    /// <para>
-    /// <c>http.Ok()</c> carries no payload, so the closed type falls back to
-    /// <see cref="object"/>: the envelope's <c>Data</c> stays <c>null</c> and
-    /// <c>JsonIgnoreCondition.WhenWritingNull</c> omits the field. No separate
-    /// no-payload envelope is needed.
-    /// </para>
-    ///
-    /// <para>
-    /// <b>Why <c>Type</c>, not a generic?</b> Error's <see cref="ErrorOptions.SetResponse{TEnvelope}"/>
-    /// is a compile‑time generic because <see cref="IErrorEnvelope"/> is non‑generic — there is
-    /// only one type to specify, so <c>SetResponse&lt;ErrorResponse&gt;()</c> works directly.
-    /// Success uses a runtime <see cref="Type"/> parameter because
-    /// <see cref="ISuccessEnvelope{T}"/> is generic and C# cannot pass an <em>open</em> generic
-    /// as a type argument — <c>SetResponse&lt;SuccessResponse&lt;&gt;&gt;()</c> does not
-    /// compile. <c>typeof(SuccessResponse&lt;&gt;)</c> is the idiomatic C# way to pass an open
-    /// generic to a method. This is a platform constraint, not a design gap.
+    /// This overload takes <see cref="Type"/> (not a generic parameter) because C# cannot
+    /// pass an <em>open</em> generic as a type argument:
+    /// <c>SetResponse&lt;MyEnvelope&lt;&gt;&gt;()</c> does not compile. Use the
+    /// <see cref="SetResponse(Func{object?, object?, HttpContext, int, object})"/>
+    /// delegate overload for AOT/trim‑safe scenarios.
     /// </para>
     /// </summary>
     /// <param name="envelopeType">
-    /// An open generic type implementing <see cref="ISuccessEnvelope{T}"/>.
+    /// An open generic type definition (e.g. <c>typeof(SuccessResponse&lt;&gt;)</c>) whose
+    /// closed form implements <see cref="ISuccessEnvelope{T}"/> and declares
+    /// <c>public static ISuccessEnvelope&lt;T&gt; From(T, object?, HttpContext, int)</c>.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="envelopeType"/> is <c>null</c>.</exception>
     /// <exception cref="InvalidOperationException">
     /// The type is not an open generic, does not implement <see cref="ISuccessEnvelope{T}"/>,
     /// or its <c>From</c> method is missing or inaccessible.
     /// </exception>
+    [RequiresUnreferencedCode("Resolves the envelope's From method by reflection. Use the delegate overload in trimmed applications.")]
+    [RequiresDynamicCode("Compiles the envelope factory with expression trees. Use the delegate overload for native AOT.")]
     public void SetResponse(Type envelopeType)
     {
+        ThrowIfFrozen();
+        if (envelopeType is null) throw new ArgumentNullException(nameof(envelopeType));
+
         if (!envelopeType.IsGenericTypeDefinition)
             throw new InvalidOperationException(
-                $"Success.SetResponse: '{envelopeType.FullName}' must be an open generic " +
-                $"implementing ISuccessEnvelope<T> - pass typeof(SuccessResponse<>). One " +
-                $"envelope covers every response; there is no separate no-payload envelope.");
+                $"Success.SetResponse requires an open generic type definition implementing " +
+                $"ISuccessEnvelope<T> (for example typeof(SuccessResponse<>)), but '{envelopeType.FullName}' " +
+                "is not an open generic.");
 
-        var contract = FindContract(envelopeType)
-            ?? throw new InvalidOperationException(
-                $"Success.SetResponse requires the envelope to implement " +
-                $"ISuccessEnvelope<T>. '{envelopeType.FullName}' does not.");
+        if (!ImplementsEnvelopeContract(envelopeType))
+            throw new InvalidOperationException(
+                $"'{envelopeType.FullName}' must implement ISuccessEnvelope<T> to be used as a success envelope.");
 
-        var _ = contract.GetMethod("From", BindingFlags.Public | BindingFlags.Static)
-            ?? throw new InvalidOperationException(
-                $"Success.SetResponse: '{envelopeType.FullName}' implements ISuccessEnvelope<T> " +
-                $"but its 'From' method is missing.");
+        // Validate the From signature now, when a payload type can be closed.
+        ValidateFromMethod(envelopeType);
 
-        Factory = (data, meta, http, statusCode) =>
+        var invokers = new ConcurrentDictionary<Type, Func<object?, object?, HttpContext, int, object>>();
+
+        Factory = (data, meta, httpContext, statusCode) =>
         {
-            var targetType = envelopeType.MakeGenericType(data?.GetType() ?? typeof(object));
-
-            var method = FromMethodCache.GetOrAdd(targetType, t =>
-                t.GetMethod("From", BindingFlags.Public | BindingFlags.Static)!);
-
-            return method.Invoke(null, new object?[] { data, meta, http, statusCode })!;
+            var payloadType = data?.GetType() ?? typeof(object);
+            var invoker = invokers.GetOrAdd(payloadType, type => BuildInvoker(envelopeType, type));
+            return invoker(data, meta, httpContext, statusCode);
         };
     }
 
-    /// <summary>Finds the <c>ISuccessEnvelope&lt;T&gt;</c> contract on the type (or its open generic form).</summary>
-    private static Type? FindContract(Type envelopeType)
+    /// <summary>
+    /// Sets the success envelope with a delegate — no reflection, no expression trees,
+    /// trim‑ and AOT‑safe. The delegate receives the payload, meta, request, and status,
+    /// and returns the envelope instance to serialize.
+    /// </summary>
+    /// <param name="factory">Builds the envelope body for one response.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="factory"/> is <c>null</c>.</exception>
+    /// <example>
+    /// <code>
+    /// options.Success.SetResponse((data, meta, ctx, status) =>
+    ///     new SuccessResponse&lt;object&gt; { StatusCode = status, Data = data });
+    /// </code>
+    /// </example>
+    public void SetResponse(Func<object?, object?, HttpContext, int, object> factory)
     {
-        if (envelopeType.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ISuccessEnvelope<>)))
-            return envelopeType;
-
-        if (envelopeType.IsGenericTypeDefinition)
-        {
-            foreach (var candidate in envelopeType.GetInterfaces())
-                if (candidate.IsGenericTypeDefinition && candidate.GetGenericTypeDefinition() == typeof(ISuccessEnvelope<>))
-                    return candidate;
-        }
-
-        return null;
+        ThrowIfFrozen();
+        Factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
 
-    /// <summary>
-    /// Per‑closed‑type <see cref="MethodInfo"/> cache — used only by
-    /// <see cref="SetResponse(Type)"/>. <c>GetMethod("From")</c> runs once per payload
-    /// type, then <c>Invoke</c> is reused. The dictionary stays small — one entry per
-    /// distinct response type across the process lifetime.
-    /// </summary>
-    private static readonly ConcurrentDictionary<Type, MethodInfo> FromMethodCache = new();
+    private static bool ImplementsEnvelopeContract(Type envelopeType)
+    {
+        foreach (var candidate in envelopeType.GetInterfaces())
+        {
+            if (candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(ISuccessEnvelope<>))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void ValidateFromMethod(Type envelopeType)
+    {
+        Type closedType;
+        try
+        {
+            closedType = envelopeType.MakeGenericType(typeof(object));
+        }
+        catch (ArgumentException)
+        {
+            // The envelope constrains T (e.g. `where T : struct`), so object cannot close
+            // it. Validation happens on the first real payload; the error message there
+            // is equally clear.
+            return;
+        }
+
+        if (FindFromMethod(closedType, typeof(object)) is null)
+        {
+            throw new InvalidOperationException(
+                $"'{envelopeType.FullName}' must declare a public static method " +
+                "'ISuccessEnvelope<T> From(T data, object? meta, HttpContext httpContext, int statusCode)' — " +
+                "it implements the static abstract member of ISuccessEnvelope<T>.");
+        }
+    }
+
+    private static MethodInfo? FindFromMethod(Type closedEnvelopeType, Type payloadType) =>
+        closedEnvelopeType.GetMethod(
+            "From",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: new[] { payloadType, typeof(object), typeof(HttpContext), typeof(int) },
+            modifiers: null);
+
+    private static Func<object?, object?, HttpContext, int, object> BuildInvoker(Type envelopeType, Type payloadType)
+    {
+        Type closedEnvelopeType;
+        try
+        {
+            closedEnvelopeType = envelopeType.MakeGenericType(payloadType);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(
+                $"Success envelope '{envelopeType.FullName}' cannot be closed with payload type " +
+                $"'{payloadType.FullName}'. Check its generic constraints.", ex);
+        }
+
+        var fromMethod = FindFromMethod(closedEnvelopeType, payloadType)
+            ?? throw new InvalidOperationException(
+                $"Success envelope '{closedEnvelopeType.FullName}' must declare a public static method " +
+                "'ISuccessEnvelope<T> From(T data, object? meta, HttpContext httpContext, int statusCode)'.");
+
+        var dataParameter = Expression.Parameter(typeof(object), "data");
+        var metaParameter = Expression.Parameter(typeof(object), "meta");
+        var httpContextParameter = Expression.Parameter(typeof(HttpContext), "httpContext");
+        var statusCodeParameter = Expression.Parameter(typeof(int), "statusCode");
+
+        var call = Expression.Call(
+            fromMethod,
+            Expression.Convert(dataParameter, payloadType),
+            metaParameter,
+            httpContextParameter,
+            statusCodeParameter);
+
+        return Expression
+            .Lambda<Func<object?, object?, HttpContext, int, object>>(
+                Expression.Convert(call, typeof(object)),
+                dataParameter,
+                metaParameter,
+                httpContextParameter,
+                statusCodeParameter)
+            .Compile();
+    }
+
+    /// <summary>Freezes the configuration. Called once by <c>AddOutcome</c> after the user delegate runs.</summary>
+    internal void Freeze() => _frozen = true;
+
+    private void ThrowIfFrozen()
+    {
+        if (_frozen)
+            throw new InvalidOperationException(
+                "OutcomeOptions have already been initialized. Configure them once inside AddOutcome(options => ...); " +
+                "mutating them after the service provider is built is not supported.");
+    }
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Mvc;
@@ -20,6 +21,7 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 [Route("mvc/products")]
 [Tags("Mvc")]
 [OutcomeResult]
+[EnableRateLimiting("per-ip")]
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _service;

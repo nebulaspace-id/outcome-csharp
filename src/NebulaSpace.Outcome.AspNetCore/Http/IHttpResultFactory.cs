@@ -67,8 +67,15 @@ public interface IHttpResultFactory
     /// <param name="errors">Field‑level validation errors (RFC 9457), if any.</param>
     IResult BadRequest(string? message = null, string? code = null, IReadOnlyDictionary<string, string[]>? errors = null);
 
-    /// <summary>401 Unauthorized with the configured error envelope.</summary>
-    IResult Unauthorized(string? message = null, string? code = null);
+    /// <summary>
+    /// 401 Unauthorized with the configured error envelope. Pass
+    /// <paramref name="challenge"/> to write the <c>WWW-Authenticate</c> header required
+    /// by RFC 9110 (e.g. <c>"Bearer"</c>); omit it only when an upstream handler adds it.
+    /// </summary>
+    /// <param name="message">Human‑readable message, if any.</param>
+    /// <param name="code">Machine‑readable code, if any.</param>
+    /// <param name="challenge">The <c>WWW-Authenticate</c> value, if any.</param>
+    IResult Unauthorized(string? message = null, string? code = null, string? challenge = null);
 
     /// <summary>403 Forbidden with the configured error envelope.</summary>
     IResult Forbidden(string? message = null, string? code = null);

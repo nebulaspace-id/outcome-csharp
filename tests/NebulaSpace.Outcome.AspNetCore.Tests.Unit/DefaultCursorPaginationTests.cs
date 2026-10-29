@@ -82,6 +82,12 @@ public class DefaultCursorPaginationTests
     }
 
     [Fact]
+    public void Create_WithNull_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => DefaultCursorPagination.Create<string>(null!));
+    }
+
+    [Fact]
     public void Implements_IPaginationDetails()
     {
         var result = new DefaultCursorResult<string>

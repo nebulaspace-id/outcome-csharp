@@ -1,35 +1,65 @@
+using System.Diagnostics;
+
 namespace NebulaSpace.Outcome;
 
 /// <summary>
 /// A result of an operation: either a success (with a <typeparamref name="T"/> value)
 /// or a failure (with a <see cref="Failure"/>). Immutable — instances are created only
 /// through the static factories and implicit conversions, and their state cannot change.
+///
+/// <para>
+/// <c>default(Outcome&lt;T&gt;)</c> is not a valid value: it has neither a payload nor a
+/// failure, so every member throws <see cref="InvalidOperationException"/>. Always create
+/// outcomes through <see cref="Success"/> or <see cref="Fail"/>.
+/// </para>
 /// </summary>
-public readonly struct Outcome<T> : IOutcome
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
+public readonly struct Outcome<T> : IOutcome, IEquatable<Outcome<T>>
 {
+    private enum State : byte
+    {
+        Uninitialized = 0,
+        Success = 1,
+        Failure = 2,
+    }
+
     private readonly T? _value;
     private readonly Failure? _failure;
-    private readonly bool _isSuccess;
+    private readonly State _state;
 
     private Outcome(T value)
     {
         _value = value;
         _failure = null;
-        _isSuccess = true;
+        _state = State.Success;
     }
 
     private Outcome(Failure failure)
     {
         _value = default;
-        _failure = failure;
-        _isSuccess = false;
+        _failure = failure ?? throw new ArgumentNullException(nameof(failure));
+        _state = State.Failure;
     }
 
-    /// <summary>Whether the operation succeeded.</summary>
-    public bool IsSuccess => _isSuccess;
+    /// <summary>Whether the operation succeeded. Throws for an uninitialized <c>default</c> outcome.</summary>
+    public bool IsSuccess
+    {
+        get
+        {
+            ThrowIfUninitialized();
+            return _state == State.Success;
+        }
+    }
 
-    /// <summary>Whether the operation failed.</summary>
-    public bool IsFailure => !_isSuccess;
+    /// <summary>Whether the operation failed. Throws for an uninitialized <c>default</c> outcome.</summary>
+    public bool IsFailure
+    {
+        get
+        {
+            ThrowIfUninitialized();
+            return _state == State.Failure;
+        }
+    }
 
     /// <summary>
     /// The payload on success. Accessing it on a failure throws <see cref="InvalidOperationException"/>.
@@ -38,7 +68,8 @@ public readonly struct Outcome<T> : IOutcome
     {
         get
         {
-            if (!_isSuccess) ThrowOnValueAccessInFailureState();
+            ThrowIfUninitialized();
+            if (_state != State.Success) ThrowOnValueAccessInFailureState();
             return _value!;
         }
     }
@@ -50,23 +81,67 @@ public readonly struct Outcome<T> : IOutcome
     {
         get
         {
-            if (_isSuccess) ThrowOnFailureAccessInSuccessState();
+            ThrowIfUninitialized();
+            if (_state != State.Failure) ThrowOnFailureAccessInSuccessState();
             return _failure!;
         }
     }
 
     /// <summary>Creates a successful outcome carrying <paramref name="value"/>.</summary>
+    /// <remarks>
+    /// A <c>null</c> value is allowed only through this explicit factory. The implicit
+    /// conversion from <typeparamref name="T"/> rejects <c>null</c>, so <c>return null;</c>
+    /// can never silently become a successful outcome.
+    /// </remarks>
     public static Outcome<T> Success(T value) => new(value);
 
     /// <summary>Creates a failed outcome carrying <paramref name="failure"/>.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="failure"/> is <c>null</c>.</exception>
     public static Outcome<T> Fail(Failure failure) => new(failure);
 
-    /// <summary>Implicitly converts a raw value into a successful outcome.</summary>
-    public static implicit operator Outcome<T>(T value) => Success(value);
+    /// <summary>
+    /// Implicitly converts a raw value into a successful outcome. A <c>null</c> value is
+    /// rejected — use <see cref="Success"/> to make a null payload explicit.
+    /// </summary>
+    public static implicit operator Outcome<T>(T value) =>
+        value is null
+            ? throw new ArgumentNullException(
+                nameof(value),
+                $"Cannot convert null to Outcome<{typeof(T).Name}>. Use Outcome<{typeof(T).Name}>.Success(value) " +
+                "when a null payload is intentional, or Outcome<" + typeof(T).Name + ">.Fail(failure).")
+            : Success(value);
 
     /// <summary>Implicitly converts a unit outcome, preserving its success/failure state.</summary>
     public static implicit operator Outcome<T>(Outcome<Unit> unit) =>
         unit.IsSuccess ? Success(default!) : Fail(unit.Failure);
+
+    /// <summary>Tries to read the payload. Returns <c>false</c> on failure.</summary>
+    public bool TryGetValue(out T? value)
+    {
+        ThrowIfUninitialized();
+        if (_state == State.Success)
+        {
+            value = _value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    /// <summary>Tries to read the failure. Returns <c>false</c> on success.</summary>
+    public bool TryGetFailure(out Failure? failure)
+    {
+        ThrowIfUninitialized();
+        if (_state == State.Failure)
+        {
+            failure = _failure;
+            return true;
+        }
+
+        failure = null;
+        return false;
+    }
 
     /// <summary>
     /// Collapses both branches into a single value. On success invokes
@@ -74,26 +149,84 @@ public readonly struct Outcome<T> : IOutcome
     /// <paramref name="onFailure"/> with the failure.
     /// </summary>
     public TOut Match<TOut>(Func<T, TOut> onSuccess, Func<Failure, TOut> onFailure)
-        => _isSuccess ? onSuccess(_value!) : onFailure(_failure!);
+    {
+        ThrowIfUninitialized();
+        if (onSuccess is null) throw new ArgumentNullException(nameof(onSuccess));
+        if (onFailure is null) throw new ArgumentNullException(nameof(onFailure));
+
+        return _state == State.Success ? onSuccess(_value!) : onFailure(_failure!);
+    }
 
     /// <summary>Deconstructs the outcome for C# pattern matching.</summary>
     public void Deconstruct(out bool isSuccess, out T? value, out Failure? failure)
     {
-        isSuccess = _isSuccess;
+        ThrowIfUninitialized();
+        isSuccess = _state == State.Success;
         value = _value;
         failure = _failure;
     }
 
+    /// <summary>Value equality over the state, the payload, and the failure instance.</summary>
+    public bool Equals(Outcome<T> other)
+    {
+        if (_state != other._state) return false;
+        return _state switch
+        {
+            State.Success => EqualityComparer<T>.Default.Equals(_value!, other._value!),
+            State.Failure => ReferenceEquals(_failure, other._failure),
+            _ => true,
+        };
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is Outcome<T> other && Equals(other);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        var hash = (int)_state;
+        hash = (hash * 397) ^ (_value is null ? 0 : EqualityComparer<T>.Default.GetHashCode(_value));
+        hash = (hash * 397) ^ (_failure is null ? 0 : _failure.GetHashCode());
+        return hash;
+    }
+
+    /// <summary>Returns <c>Success(value)</c> or <c>Failure(code)</c> for debugging.</summary>
+    public override string ToString() => DebuggerDisplay;
+
+    private string DebuggerDisplay => _state switch
+    {
+        State.Success => $"Success({_value})",
+        State.Failure => $"Failure({_failure!.Code ?? _failure.Message})",
+        _ => "Uninitialized",
+    };
+
     // ── IOutcome — non-generic view for reflection-free dispatch (e.g. MVC filter) ──
 
     /// <inheritdoc />
-    object? IOutcome.Value => _isSuccess ? _value : null;
+    object? IOutcome.Value => _state == State.Success ? _value : null;
 
     /// <inheritdoc />
-    Failure IOutcome.Failure => _isSuccess ? null! : _failure!;
+    Failure? IOutcome.Failure => _state == State.Failure ? _failure : null;
 
     /// <inheritdoc />
-    bool IOutcome.IsSuccess => _isSuccess;
+    bool IOutcome.IsSuccess
+    {
+        get
+        {
+            ThrowIfUninitialized();
+            return _state == State.Success;
+        }
+    }
+
+    private void ThrowIfUninitialized()
+    {
+        if (_state == State.Uninitialized)
+        {
+            throw new InvalidOperationException(
+                $"This Outcome<{typeof(T).Name}> instance is uninitialized (default). " +
+                $"Create outcomes with Outcome<{typeof(T).Name}>.Success(value) or Outcome<{typeof(T).Name}>.Fail(failure).");
+        }
+    }
 
     private static void ThrowOnValueAccessInFailureState() =>
         throw new InvalidOperationException(
@@ -119,6 +252,9 @@ public static class Outcome
 
     /// <summary>Creates a failed outcome carrying <paramref name="failure"/>.</summary>
     public static Outcome<Unit> Fail(Failure failure) => Outcome<Unit>.Fail(failure);
+
+    /// <summary>Creates a failed outcome of <typeparamref name="T"/> carrying <paramref name="failure"/>.</summary>
+    public static Outcome<T> Fail<T>(Failure failure) => Outcome<T>.Fail(failure);
 }
 
 /// <summary>
@@ -136,5 +272,5 @@ public interface IOutcome
     object? Value { get; }
 
     /// <summary>The failure on failure, <c>null</c> on success.</summary>
-    Failure Failure { get; }
+    Failure? Failure { get; }
 }

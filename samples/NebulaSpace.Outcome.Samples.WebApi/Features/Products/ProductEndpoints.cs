@@ -15,7 +15,8 @@ public static class ProductEndpoints
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/products")
-            .WithTags("Minimal Api");
+            .WithTags("Minimal Api")
+            .RequireRateLimiting("per-ip");
 
         // Ping — 200 with no payload. Same envelope as every other response;
         // Data is null so WhenWritingNull omits it.

@@ -1,4 +1,5 @@
-using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using NebulaSpace.Outcome;
@@ -25,15 +26,23 @@ namespace NebulaSpace.Outcome.AspNetCore.Options;
 /// <item>Unknown failures degrade to 500 Internal Server Error (never throws).</item>
 /// </list>
 /// </para>
+///
+/// <para>
+/// Configure this once inside <c>AddOutcome(options =&gt; ...)</c>. After startup the
+/// options are frozen and every mutator throws <see cref="InvalidOperationException"/>.
+/// </para>
 /// </summary>
 public sealed class ErrorOptions
 {
+    private bool _frozen;
+    private bool _includeExceptionDetails;
+
     // ── Envelope ──────────────────────────────────────────────────
 
     /// <summary>
     /// Builds a concrete envelope instance from the failure's HTTP intent and the current
     /// request. <c>null</c> until a <c>SetResponse</c> overload is called, after which
-    /// <see cref="ErrorEnvelopeResult"/> uses it instead of <see cref="DefaultErrorResponse"/>.
+    /// <c>ErrorEnvelopeResult</c> uses it instead of <see cref="DefaultErrorResponse"/>.
     /// </summary>
     internal Func<FailureDetails, HttpContext, object>? Factory { get; private set; }
 
@@ -62,42 +71,62 @@ public sealed class ErrorOptions
     /// </example>
     public void SetResponse<TEnvelope>() where TEnvelope : IErrorEnvelope
     {
-        Factory = (details, ctx) => TEnvelope.From(details, ctx);
+        ThrowIfFrozen();
+        Factory = static (details, ctx) => TEnvelope.From(details, ctx);
     }
 
     /// <summary>
     /// Sets the error envelope by <see cref="Type"/>. Prefer the generic
-    /// <see cref="SetResponse{TEnvelope}"/> — it is compile‑time safe.
+    /// <see cref="SetResponse{TEnvelope}"/> — it is compile‑time safe and trim‑safe.
     /// This overload exists for scenarios where the envelope type is only known at
-    /// runtime; it caches the <see cref="MethodInfo"/> per type so the reflection cost
-    /// is paid once.
+    /// runtime. The <c>From</c> method is resolved and compiled to a delegate
+    /// <b>once at startup</b>, so requests pay no reflection cost.
     /// </summary>
     /// <param name="envelopeType">
-    /// A <see cref="Type"/> implementing <see cref="IErrorEnvelope"/>.
+    /// A non‑abstract <see cref="Type"/> implementing <see cref="IErrorEnvelope"/> and
+    /// declaring <c>public static IErrorEnvelope From(FailureDetails, HttpContext)</c>.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="envelopeType"/> is <c>null</c>.</exception>
     /// <exception cref="InvalidOperationException">
-    /// <paramref name="envelopeType"/> does not implement <see cref="IErrorEnvelope"/>.
+    /// The type is an interface/abstract, does not implement <see cref="IErrorEnvelope"/>,
+    /// or has no public static <c>From(FailureDetails, HttpContext)</c> method.
     /// </exception>
+    [RequiresUnreferencedCode("Resolves the envelope's From method by reflection. Use SetResponse<TEnvelope>() in trimmed applications.")]
+    [RequiresDynamicCode("Compiles the envelope factory with expression trees. Use SetResponse<TEnvelope>() for native AOT.")]
     public void SetResponse(Type envelopeType)
     {
-        if (!typeof(IErrorEnvelope).IsAssignableFrom(envelopeType))
+        ThrowIfFrozen();
+        if (envelopeType is null) throw new ArgumentNullException(nameof(envelopeType));
+
+        if (!typeof(IErrorEnvelope).IsAssignableFrom(envelopeType) || envelopeType.IsInterface || envelopeType.IsAbstract)
             throw new InvalidOperationException(
-                $"Error.SetResponse requires the envelope to implement IErrorEnvelope. " +
+                "Error.SetResponse requires a non-abstract class implementing IErrorEnvelope. " +
                 $"'{envelopeType.FullName}' does not.");
 
-        var fromMethod = DelegateCache.GetOrAdd(envelopeType, t =>
-            t.GetMethod("From", BindingFlags.Public | BindingFlags.Static)!);
+        var fromMethod = envelopeType.GetMethod(
+            nameof(IErrorEnvelope.From),
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(FailureDetails), typeof(HttpContext) },
+            modifiers: null);
 
-        Factory = (details, ctx) => fromMethod.Invoke(null, new object[] { details, ctx })!;
+        if (fromMethod is null)
+            throw new InvalidOperationException(
+                $"'{envelopeType.FullName}' must declare a public static method " +
+                "'IErrorEnvelope From(FailureDetails details, HttpContext httpContext)' — " +
+                "it implements the static abstract member of IErrorEnvelope.");
+
+        var detailsParameter = Expression.Parameter(typeof(FailureDetails), "details");
+        var contextParameter = Expression.Parameter(typeof(HttpContext), "httpContext");
+        var call = Expression.Call(fromMethod, detailsParameter, contextParameter);
+
+        Factory = Expression
+            .Lambda<Func<FailureDetails, HttpContext, object>>(
+                Expression.Convert(call, typeof(object)),
+                detailsParameter,
+                contextParameter)
+            .Compile();
     }
-
-    /// <summary>
-    /// Per‑type <see cref="MethodInfo"/> cache — used only by
-    /// <see cref="SetResponse(Type)"/>. Each entry is created once and reused for the
-    /// lifetime of the process. The dictionary stays small — one entry per distinct
-    /// error‑envelope type.
-    /// </summary>
-    private static readonly ConcurrentDictionary<Type, MethodInfo> DelegateCache = new();
 
     // ── Failure mapping ───────────────────────────────────────────
 
@@ -116,6 +145,7 @@ public sealed class ErrorOptions
     /// </summary>
     /// <typeparam name="TFailure">The failure type to map. Must inherit from <see cref="Failure"/>.</typeparam>
     /// <param name="mapper">A function that returns <see cref="FailureDetails"/> from the failure instance.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="mapper"/> is <c>null</c>.</exception>
     /// <example>
     /// <code>
     /// options.Error.MapFailure&lt;QuotaExceededFailure&gt;(f =>
@@ -124,7 +154,12 @@ public sealed class ErrorOptions
     /// </example>
     public void MapFailure<TFailure>(Func<TFailure, FailureDetails> mapper)
         where TFailure : Failure
-        => _failureMappers[typeof(TFailure)] = failure => mapper((TFailure)failure);
+    {
+        ThrowIfFrozen();
+        if (mapper is null) throw new ArgumentNullException(nameof(mapper));
+
+        _failureMappers[typeof(TFailure)] = failure => mapper((TFailure)failure);
+    }
 
     /// <summary>
     /// Finds a registered mapper for <paramref name="type"/>, walking its base‑type chain
@@ -132,7 +167,7 @@ public sealed class ErrorOptions
     /// </summary>
     internal bool TryGetFailureMapper(Type type, out Func<Failure, FailureDetails> mapper)
     {
-        for (var current = type; current is not null && current != typeof(Failure); current = current.BaseType!)
+        for (var current = type; current is not null && current != typeof(Failure); current = current.BaseType)
         {
             if (_failureMappers.TryGetValue(current, out mapper!))
                 return true;
@@ -160,6 +195,7 @@ public sealed class ErrorOptions
     /// A function that returns <see cref="FailureDetails"/> from the exception instance.
     /// This becomes the response intent; the configured error envelope renders it into a body.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="mapper"/> is <c>null</c>.</exception>
     /// <example>
     /// <code>
     /// options.Error.MapException&lt;DomainException&gt;(ex =>
@@ -168,7 +204,12 @@ public sealed class ErrorOptions
     /// </example>
     public void MapException<TException>(Func<TException, FailureDetails> mapper)
         where TException : Exception
-        => _exceptionMappers[typeof(TException)] = ex => mapper((TException)ex);
+    {
+        ThrowIfFrozen();
+        if (mapper is null) throw new ArgumentNullException(nameof(mapper));
+
+        _exceptionMappers[typeof(TException)] = ex => mapper((TException)ex);
+    }
 
     /// <summary>
     /// Finds a registered mapper for <paramref name="type"/>, walking its base‑type chain
@@ -176,7 +217,7 @@ public sealed class ErrorOptions
     /// </summary>
     internal bool TryGetExceptionMapper(Type type, out Func<Exception, FailureDetails> mapper)
     {
-        for (var current = type; current is not null && current != typeof(Exception); current = current.BaseType!)
+        for (var current = type; current is not null && current != typeof(Exception); current = current.BaseType)
         {
             if (_exceptionMappers.TryGetValue(current, out mapper!))
                 return true;
@@ -199,5 +240,24 @@ public sealed class ErrorOptions
     /// is returned as‑is regardless of this setting.
     /// </para>
     /// </summary>
-    public bool IncludeExceptionDetails { get; set; }
+    public bool IncludeExceptionDetails
+    {
+        get => _includeExceptionDetails;
+        set
+        {
+            ThrowIfFrozen();
+            _includeExceptionDetails = value;
+        }
+    }
+
+    /// <summary>Freezes the configuration. Called once by <c>AddOutcome</c> after the user delegate runs.</summary>
+    internal void Freeze() => _frozen = true;
+
+    private void ThrowIfFrozen()
+    {
+        if (_frozen)
+            throw new InvalidOperationException(
+                "OutcomeOptions have already been initialized. Configure them once inside AddOutcome(options => ...); " +
+                "mutating them after the service provider is built is not supported.");
+    }
 }

@@ -1,6 +1,6 @@
 using FluentValidation;
 using NebulaSpace.Outcome;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome.AspNetCore.Failures;
 using NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
@@ -41,12 +41,20 @@ public sealed class ProductService : IProductService
 
     public async Task<Outcome<Product>> CreateProduct(CreateProductRequest request)
     {
-        // FluentValidation throws ValidationException on invalid input — mapped to
-        // 400 with field errors by the exception-handling middleware (Program.cs).
-        await _validator.ValidateAndThrowAsync(request);
+        // Validation is an expected outcome, not an exception: return a 400
+        // ValidationFailure so the endpoint maps it like any other failure.
+        var validation = await _validator.ValidateAsync(request);
+        if (!validation.IsValid)
+        {
+            var errors = validation.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+
+            return Outcome.Fail(new ValidationFailure("Validation Error", errors));
+        }
 
         // Business rule: product names must be unique. An expected conflict, so it
-        // is an outcome, not an exception.
+        // is an outcome, not an exception. The repository re-checks under a lock.
         if (_repo.ExistsByName(request.Name))
             return Outcome.Fail(new DuplicateProductName(request.Name));
 

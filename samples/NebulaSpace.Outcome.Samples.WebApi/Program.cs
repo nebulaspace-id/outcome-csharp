@@ -1,10 +1,10 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
-using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Extensions;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -32,9 +32,7 @@ builder.Services.Configure<JsonOptions>(options =>
 
 // ── Controllers (MVC) ─────────────────────────────────────────────────────
 
-builder.Services.AddControllers()
-    .AddApplicationPart(typeof(ProductsController).Assembly);
-
+builder.Services.AddControllers();
 builder.Services.AddOutcomeMvcFilter();
 
 // ── Swagger ───────────────────────────────────────────────────────────────
@@ -58,18 +56,27 @@ builder.Services.AddRateLimiter(options =>
 
     options.OnRejected = async (context, cancellationToken) =>
     {
-        var resultOptions = context.HttpContext.RequestServices.GetRequiredService<OutcomeOptions>();
+        // Tell a well-behaved client when to retry instead of making it guess.
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+
+        // Reuse the library's error envelope so 429 looks like every other error.
+        var http = context.HttpContext.RequestServices.GetRequiredService<IHttpResultFactory>();
         var details = new FailureDetails(
             StatusCodes.Status429TooManyRequests,
             message: "Too many requests. Try again later.",
             code: "rate_limit_exceeded");
 
-        await new ErrorEnvelopeResult(details, resultOptions)
-            .ExecuteAsync(context.HttpContext, cancellationToken);
+        await http.FromFailureDetails(details).ExecuteAsync(context.HttpContext);
     };
 
-    options.AddPolicy("fixed", _ => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: "global",
+    // One bucket per client IP, not one global bucket — otherwise a single noisy
+    // caller throttles everybody.
+    options.AddPolicy("per-ip", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 10,
@@ -103,16 +110,6 @@ builder.Services.AddOutcome(options =>
     options.Error.MapException<DomainException>(ex =>
         new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, "domain_error"));
 
-    // FluentValidation exceptions → 400 Bad Request with field errors.
-    options.Error.MapException<ValidationException>(ex =>
-        new FailureDetails(
-            StatusCodes.Status400BadRequest,
-            message: "Validation Error",
-            code: "validation_error",
-            errors: ex.Errors
-                .GroupBy(e => e.PropertyName)
-                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())));
-
     // Unhandled exceptions — only leak details in Development.
     options.Error.IncludeExceptionDetails = builder.Environment.IsDevelopment();
 });
@@ -120,15 +117,20 @@ builder.Services.AddOutcome(options =>
 // ── App services ──────────────────────────────────────────────────────────
 
 builder.Services.AddSingleton<IProductRepository, InMemoryProductRepository>();
-builder.Services.AddSingleton<IProductService, ProductService>();
-builder.Services.AddSingleton<IValidator<CreateProductRequest>, CreateProductRequestValidator>();
+// Scoped: ProductService consumes FluentValidation's scoped IValidator<T>. Registering
+// it as a singleton would capture the validator (the container rejects that at startup).
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateProductRequestValidator>(includeInternalTypes: false);
 
 var app = builder.Build();
 
 // ── Middleware pipeline ───────────────────────────────────────────────────
 
-app.UseRateLimiter();
+// FIRST: wraps rate limiting, routing, and endpoints, so an exception anywhere
+// still produces the library's error envelope.
 app.UseOutcomeExceptionHandler();
+app.UseRouting();
+app.UseRateLimiter();
 app.UseHttpsRedirection();
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -137,6 +139,5 @@ app.UseSwaggerUI();
 
 app.MapProductEndpoints();
 app.MapControllers();
-app.MapOpenApi();
 
 app.Run();

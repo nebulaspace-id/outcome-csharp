@@ -675,6 +675,106 @@ public class HttpResultTests
         Assert.Throws<InvalidOperationException>(() => services.AddOutcome());
     }
 
+    [Fact]
+    public void AddOutcome_FreezesEveryMutator()
+    {
+        var services = new ServiceCollection();
+        services.AddOutcome();
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<OutcomeOptions>();
+
+        Assert.Throws<InvalidOperationException>(() => options.Success.Enabled = false);
+        Assert.Throws<InvalidOperationException>(() => options.Error.IncludeExceptionDetails = true);
+        Assert.Throws<InvalidOperationException>(() => options.Error.SetResponse<AppError>());
+        Assert.Throws<InvalidOperationException>(() =>
+            options.Error.MapFailure<QuotaStub>(f => new FailureDetails(422, f.Message)));
+        Assert.Throws<InvalidOperationException>(() =>
+            options.Error.MapException<InvalidOperationException>(ex => new FailureDetails(500, ex.Message)));
+    }
+
+    // ── Hardening regressions ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task FromFailure_UnknownFailure_DoesNotLeakItsMessage()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+        var capture = await Execute(factory, factory.FromFailure(new UnknownFailureStub()));
+
+        var json = ResultTestHelper.ParseJson(capture.Body);
+        Assert.Equal("An error occurred while processing your request.", json.GetProperty("detail").GetString());
+        Assert.NotEqual("boom", json.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task Unauthorized_WithChallenge_WritesWwwAuthenticate()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+        var capture = await Execute(factory, factory.Unauthorized(message: "nope", challenge: "Bearer"));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, capture.StatusCode);
+        Assert.Equal("Bearer", capture.Headers["WWW-Authenticate"]);
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task SensitiveErrors_SetNoStore(int statusCode)
+    {
+        var factory = ResultTestHelper.CreateFactory();
+        var result = statusCode == 401 ? factory.Unauthorized() : factory.Forbidden();
+
+        var capture = await Execute(factory, result);
+
+        Assert.Equal("no-store", capture.Headers["Cache-Control"]);
+    }
+
+    [Fact]
+    public async Task DefaultErrorBody_IsProblemJson()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+        var capture = await Execute(factory, factory.NotFound());
+
+        Assert.StartsWith("application/problem+json", capture.Headers["Content-Type"]);
+    }
+
+    [Fact]
+    public async Task Created_RejectsCrLfInLocation()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+
+        Assert.Throws<ArgumentException>(() => factory.Created("/products/1\r\nX-Injected: 1", new { Id = 1 }));
+    }
+
+    [Fact]
+    public void FromFailureDetails_WithNull_Throws()
+    {
+        var factory = ResultTestHelper.CreateFactory();
+
+        Assert.Throws<ArgumentNullException>(() => factory.FromFailureDetails(null!));
+    }
+
+    [Theory]
+    [InlineData(99)]
+    [InlineData(0)]
+    [InlineData(1000)]
+    public void FailureDetails_RejectsOutOfRangeStatus(int statusCode)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new FailureDetails(statusCode));
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(599)]
+    [InlineData(999)]
+    public void FailureDetails_AcceptsValidStatus(int statusCode)
+    {
+        var details = new FailureDetails(statusCode);
+
+        Assert.Equal(statusCode, details.StatusCode);
+    }
+
     private sealed class UnknownFailureStub : Failure
     {
         public UnknownFailureStub() : base("boom", "unknown") { }

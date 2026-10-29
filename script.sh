@@ -73,7 +73,9 @@ fi
 
 if [ "$PACK" = true ]; then
     echo "==> Packing NuGet packages ..."
-    dotnet pack "$SOLUTION" -c "$CONFIG" --no-build -o "$ROOT/artifacts"
+    # Pack the packages, not the solution: tests and the sample are not packable.
+    dotnet pack "$ROOT/src/NebulaSpace.Outcome/NebulaSpace.Outcome.csproj" -c "$CONFIG" --no-build -o "$ROOT/artifacts"
+    dotnet pack "$ROOT/src/NebulaSpace.Outcome.AspNetCore/NebulaSpace.Outcome.AspNetCore.csproj" -c "$CONFIG" --no-build -o "$ROOT/artifacts"
     echo "==> Packages written to $ROOT/artifacts"
 fi
 

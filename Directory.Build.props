@@ -3,8 +3,11 @@
     <PropertyGroup>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <!-- Allow C# 11 features (required, init, records) on older target frameworks -->
+        <!-- C# 12: required for collection expressions and modern pattern syntax. -->
         <LangVersion>12.0</LangVersion>
+
+        <!-- Lockstep version for every package in this repository. -->
+        <VersionPrefix>0.8.0</VersionPrefix>
 
         <!-- Shared NuGet package metadata -->
         <Authors>NebulaSpace</Authors>

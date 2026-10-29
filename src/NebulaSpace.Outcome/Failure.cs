@@ -59,9 +59,10 @@ public abstract class Failure
     /// </summary>
     /// <param name="message">Human-readable description of what went wrong.</param>
     /// <param name="code">Stable, machine-readable code (e.g. <c>"not_found"</c>), or <c>null</c>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <c>null</c>.</exception>
     protected Failure(string message, string? code)
     {
-        Message = message;
+        Message = message ?? throw new ArgumentNullException(nameof(message));
         Code = code;
     }
 }

@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using NebulaSpace.Outcome.AspNetCore.Pagination;
+using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
@@ -7,11 +7,18 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Features.Products;
 /// <summary>
 /// In-memory product store seeded with 25 products. The dictionary gives O(1)
 /// lookup by id; the ordered list preserves insertion order for pagination.
+///
+/// <para>
+/// The sample is registered as a singleton, so every mutation and every ordered
+/// read takes the same lock. Without it, <c>List&lt;T&gt;</c> can throw or return
+/// torn pages while another request adds or removes a product.
+/// </para>
 /// </summary>
 public sealed class InMemoryProductRepository : IProductRepository
 {
     private readonly ConcurrentDictionary<Guid, Product> _products = new();
-    private readonly List<Product> _ordered;
+    private readonly List<Product> _ordered = [];
+    private readonly object _gate = new();
 
     public InMemoryProductRepository()
     {
@@ -32,16 +39,16 @@ public sealed class InMemoryProductRepository : IProductRepository
         var random = new Random(42); // deterministic seed
         foreach (var (name, i) in names.Select((name, i) => (name, i)))
         {
-            AddCore(new Product(
+            var product = new Product(
                 Id: Guid.NewGuid(),
                 Name: name,
                 Price: Math.Round((decimal)(random.NextDouble() * 190 + 10), 2),
                 Category: categories[i % categories.Length],
-                CreatedAt: DateTime.UtcNow.AddDays(-random.Next(1, 90))
-            ));
-        }
+                CreatedAt: DateTime.UtcNow.AddDays(-random.Next(1, 90)));
 
-        _ordered = _products.Values.ToList();
+            _products[product.Id] = product;
+            _ordered.Add(product);
+        }
     }
 
     public int Count => _products.Count;
@@ -49,66 +56,87 @@ public sealed class InMemoryProductRepository : IProductRepository
     public Product? GetById(Guid id) =>
         _products.TryGetValue(id, out var product) ? product : null;
 
-    public bool ExistsByName(string name) =>
-        _products.Values.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-    public Shared.OffsetResult<Product> GetAll(Shared.OffsetQuery query) => new()
+    public bool ExistsByName(string name)
     {
-        Items = _ordered
-            .Skip(query.Offset)
-            .Take(query.Limit)
-            .ToArray(),
-        TotalCount = _ordered.Count,
-    };
+        lock (_gate)
+        {
+            return _ordered.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    public Shared.OffsetResult<Product> GetAll(Shared.OffsetQuery query)
+    {
+        lock (_gate)
+        {
+            return new Shared.OffsetResult<Product>
+            {
+                // Offset is capped by the query type, but clamp again so a custom
+                // query can never skip past int.MaxValue or request a negative page.
+                Items = _ordered
+                    .Skip(Math.Max(0, query.Offset))
+                    .Take(Math.Max(0, query.Limit))
+                    .ToArray(),
+                TotalCount = _ordered.Count,
+            };
+        }
+    }
 
     public CursorResult<Product> GetAllCursor(CursorQuery query)
     {
-        var startIndex = DecodeCursor(query.Cursor);
-
-        var items = _ordered
-            .Skip(startIndex)
-            .Take(query.Limit)
-            .ToArray();
-
-        var endIndex = startIndex + items.Length;
-        var hasMore = endIndex < _ordered.Count;
-
-        return new CursorResult<Product>
+        lock (_gate)
         {
-            Items = items,
-            PreviousCursor = startIndex == 0 ? null : Math.Max(0, startIndex - query.Limit).ToString(),
-            NextCursor = hasMore ? endIndex.ToString() : null,
-            TotalCount = _ordered.Count,
-        };
+            var startIndex = Math.Clamp(DecodeCursor(query.Cursor), 0, _ordered.Count);
+            var limit = Math.Max(0, query.Limit);
+
+            var items = _ordered
+                .Skip(startIndex)
+                .Take(limit)
+                .ToArray();
+
+            var endIndex = startIndex + items.Length;
+            var hasMore = endIndex < _ordered.Count;
+
+            return new CursorResult<Product>
+            {
+                Items = items,
+                PreviousCursor = startIndex == 0 ? null : Math.Max(0, startIndex - limit).ToString(),
+                NextCursor = hasMore ? endIndex.ToString() : null,
+                TotalCount = _ordered.Count,
+            };
+        }
     }
 
     public Product Add(Product product)
     {
-        // Defense-in-depth invariant: the service already checks uniqueness and
-        // generates fresh ids, so reaching these guards means a real bug (e.g. a
-        // race). An exceptional condition → throw; the exception-handling
-        // middleware maps DomainException to a clean error envelope.
-        if (_products.ContainsKey(product.Id))
-            throw new DomainException($"Invariant violated: product id '{product.Id}' already exists.");
+        // The uniqueness check and the insert happen under one lock so two concurrent
+        // creates cannot both pass the check (TOCTOU).
+        lock (_gate)
+        {
+            // Defense-in-depth invariant: the service already checks uniqueness and
+            // generates fresh ids, so reaching these guards means a real bug.
+            if (_products.ContainsKey(product.Id))
+                throw new DomainException($"Invariant violated: product id '{product.Id}' already exists.");
 
-        if (ExistsByName(product.Name))
-            throw new DomainException($"Invariant violated: product name '{product.Name}' already exists.");
+            if (_ordered.Any(p => p.Name.Equals(product.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new DomainException($"Invariant violated: product name '{product.Name}' already exists.");
 
-        AddCore(product);
-        _ordered.Add(product);
-        return product;
+            _products[product.Id] = product;
+            _ordered.Add(product);
+            return product;
+        }
     }
 
     public bool Delete(Guid id)
     {
-        if (!_products.TryRemove(id, out var product))
-            return false;
+        lock (_gate)
+        {
+            if (!_products.TryRemove(id, out var product))
+                return false;
 
-        _ordered.Remove(product);
-        return true;
+            _ordered.Remove(product);
+            return true;
+        }
     }
-
-    private void AddCore(Product product) => _products[product.Id] = product;
 
     /// <summary>
     /// A cursor is just the 0-based index into the ordered list. A production
