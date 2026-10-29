@@ -77,13 +77,16 @@ group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory
 ```
 
 Implicit conversions keep call sites short: `return product` lifts a raw value into a
-success, `return new ProductNotFound(id)` lifts a failure. The same `Outcome<T>` works
-for single reads, pages, commands, and deletes.
+success, `return new ProductNotFound(id)` lifts a failure. A `null` value does **not**
+silently become a success — the implicit conversion throws; use
+`Outcome<T>.Success(null!)` when a null payload is intentional. The same `Outcome<T>`
+works for single reads, pages, commands, and deletes.
 
 | Member | Description |
 | --- | --- |
 | `IsSuccess` / `IsFailure` | Which branch |
-| `Value` / `Failure` | Access payload or error |
+| `Value` / `Failure` | Access payload or error (the wrong branch throws) |
+| `TryGetValue` / `TryGetFailure` | Non-throwing branch access for defensive code |
 | `Match(onSuccess, onFailure)` | Collapse both branches into one value |
 
 ---
@@ -172,18 +175,20 @@ group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFact
 ```
 
 `Outcome<Unit>` still flows through the same envelope when you want a 200 body instead
-of 204: `http.Ok()` returns the registered envelope with a null `Data`, which
-`WhenWritingNull` omits. In Swagger, document that shape as
-`.Produces<SuccessResponse<Unit>>()` (or
+of 204: `http.Ok()` returns the registered envelope with no `data` key at all (the
+payload is absent, and `WhenWritingNull` omits it). For documentation, annotate that
+endpoint with `.Produces<SuccessResponse<Unit>>()` (or
 `[ProducesResponseType<SuccessResponse<Unit>>(StatusCodes.Status200OK)]` in MVC), like
-the sample's ping endpoint.
+the sample's ping endpoint — but note the emitted body is
+`{ "statusCode": 200, "meta": … }`, so the annotation is a shape hint, not a promise
+that `data` exists.
 
 ### Optional: your response API, your rules
 
 | Want | Write | Skip it and |
 | --- | --- | --- |
 | Metadata (`meta` timestamp, pagination, request id) | A `Meta` type plus a `Pagination` type | Responses are just `statusCode` and `data` |
-| Pagination (offset, cursor, or both) | Query and result types per strategy you use | The library ships none: no caps, no opinion |
+| Pagination (offset, cursor, or both) | Query and result types per strategy you use — or the `Default*` types the library ships, which cap page/limit for you | The library ships no pagination <em>envelope</em>: `meta` stays your type |
 | Links / HATEOAS | A `Links` (or similar) property on your own `Meta` | The library has no HATEOAS support today: no link relations, no rel builders, no automatic `self`/`next` links. Responses carry `data` and `meta` only, so hypermedia is up to your envelope |
 | Custom error status per failure | `IHttpFailure` on the failure, or `options.Error.MapFailure<T>(…)` | Unknown failures fall back to 500, never throw |
 | Exceptions mapped to your envelope | `options.Error.MapException<T>(…)` plus `app.UseOutcomeExceptionHandler()` | Unhandled exceptions become a plain 500 |
@@ -279,9 +284,10 @@ public sealed class Pagination
     // Offset: echoes the request's page/limit, derives the rest from TotalCount.
     public static Pagination Offset<T>(OffsetResult<T> result, OffsetQuery query)
     {
+        // 64-bit math: (n - 1) / limit + 1 cannot overflow the way (n + limit - 1) can.
         var totalPages = result.TotalCount == 0
             ? 0
-            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+            : (int)Math.Min((result.TotalCount - 1) / query.Limit + 1, int.MaxValue);
 
         return new Pagination
         {
@@ -313,14 +319,14 @@ one `Pagination` type, so an offset response emits `page`/`limit`/`totalPages` a
 cursor response emits `previousCursor`/`nextCursor`, with no extra types and no unused
 fields in either JSON.
 
-One thing the library never does for you: cap the request. `MaxPage` and `MaxLimit`
-live on your query type (see the sample's `Shared/OffsetQuery` and `Shared/CursorQuery`),
-clamped in the setters. A client sending `?page=999999` gets your cap, because the
-bound value never leaves the query object unclamped.
+The library ships ready-made query types with caps: `DefaultOffsetQuery` (page 1..1,000,000,
+limit 1..100) and `DefaultCursorQuery` (limit 1..100). They are optional. If you write
+your own query type, cap it yourself — clamp every value a client can send, and do the
+offset math in 64-bit so a large page/limit cannot wrap negative:
 
 ```csharp
 // Offset only: query the request binds to, page the service returns.
-// Caps are your job, not the library's: clamp every value a client can send.
+// Caps are your job on a custom type: clamp every value a client can send.
 public sealed class OffsetQuery : IPaginatedQuery
 {
     private const int MaxPage = 25;
@@ -331,7 +337,7 @@ public sealed class OffsetQuery : IPaginatedQuery
 
     public int Page  { get => _page;  set => _page  = Math.Clamp(value, 1, MaxPage); }
     public int Limit { get => _limit; set => _limit = Math.Clamp(value, 1, MaxLimit); }
-    public int Offset => (Page - 1) * Limit;
+    public int Offset => (int)Math.Min((long)(Page - 1) * Limit, int.MaxValue);
 }
 
 public sealed class OffsetResult<T>
@@ -469,7 +475,7 @@ public sealed class LegacyError : IErrorEnvelope
 
     public static IErrorEnvelope From(FailureDetails details, HttpContext context) => new LegacyError
     {
-        Code = details.StatusCode ?? 500,
+        Code = details.StatusCode,
         Message = details.Message ?? "Internal server error",
     };
 }
@@ -487,7 +493,7 @@ The controllers shrink to the outcome flow. Same JSON, less code:
 ```csharp
 // AFTER, part 2: same response bodies, no hand-built envelopes.
 public Outcome<Product> GetProduct(Guid id) =>
-    _repo.GetById(id) ?? new ProductNotFound("Product not found");
+    _repo.GetById(id) ?? new ProductNotFound(id);
 
 group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
 {
@@ -538,8 +544,8 @@ group.MapGet("/", (IProductService service, [AsParameters] OffsetQuery query, IH
 `data: Product[]` and your `Meta` fields, not `data: object`. The failure declarations
 give the error envelope its own entry per status code.
 
-The sample wires Swagger in `Program.cs`: `AddEndpointsApiExplorer()`,
-`AddSwaggerGen(...)`, and `MapOpenApi()` (or `UseSwagger()` for the classic UI). For MVC
+The sample wires Swagger in `Program.cs`: `AddEndpointsApiExplorer()`, `AddSwaggerGen(...)`,
+`UseSwagger()`, and `UseSwaggerUI()`. For MVC
 actions under the `[OutcomeResult]` filter, annotate the same way with
 `[ProducesResponseType(typeof(SuccessResponse<Product>), StatusCodes.Status200OK)]`
 when you want the same documentation.
@@ -712,7 +718,7 @@ Unhandled exceptions become the same error envelope as expected failures:
 builder.Services.AddOutcome(options =>
 {
     options.Error.MapException<DomainException>(ex =>
-        new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, ex.Code));
+        new FailureDetails(StatusCodes.Status422UnprocessableEntity, ex.Message, "domain_error"));
     options.Error.MapException<ValidationException>(ex =>
         new FailureDetails(StatusCodes.Status400BadRequest, "Validation Error",
             code: "validation_error",
@@ -730,8 +736,8 @@ app.UseOutcomeExceptionHandler();   // BEFORE routing
 ## Rate limiting
 
 Middleware outside `IHttpResultFactory` (the ASP.NET rate limiter, for example) can
-still emit your error envelope. Resolve `OutcomeOptions` from the request's services,
-build a `FailureDetails`, and execute `ErrorEnvelopeResult` yourself:
+still emit your error envelope. Resolve `IHttpResultFactory` from the request's services,
+build a `FailureDetails`, and execute the resulting `IResult`:
 
 ```csharp
 builder.Services.AddRateLimiter(options =>
@@ -740,26 +746,43 @@ builder.Services.AddRateLimiter(options =>
 
     options.OnRejected = async (context, cancellationToken) =>
     {
-        var resultOptions = context.HttpContext.RequestServices
-            .GetRequiredService<OutcomeOptions>();
+        // Tell a well-behaved client when to retry instead of making it guess.
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+
+        var http = context.HttpContext.RequestServices
+            .GetRequiredService<IHttpResultFactory>();
 
         var details = new FailureDetails(
             StatusCodes.Status429TooManyRequests,
             message: "Too many requests. Try again later.",
             code: "rate_limit_exceeded");
 
-        await new ErrorEnvelopeResult(details, resultOptions)
-            .ExecuteAsync(context.HttpContext, cancellationToken);
+        await http.FromFailureDetails(details).ExecuteAsync(context.HttpContext);
     };
 
-    options.AddPolicy("fixed", _ => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: "global",
+    // One bucket per client IP, not one global bucket.
+    options.AddPolicy("per-ip", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
         }));
 });
+```
+
+Apply the policy where it belongs (`RequireRateLimiting("per-ip")` on a minimal-API
+group, or `[EnableRateLimiting("per-ip")]` on a controller), and register the exception
+handler first so a limiter failure also becomes your envelope:
+
+```csharp
+app.UseOutcomeExceptionHandler(); // FIRST
+app.UseRouting();
+app.UseRateLimiter();
 ```
 
 A 429 from the limiter comes back as your `ErrorResponse` (or `LegacyError`, whichever
