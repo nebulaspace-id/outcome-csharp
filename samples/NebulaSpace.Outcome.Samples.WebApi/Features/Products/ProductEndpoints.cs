@@ -70,6 +70,36 @@ public static class ProductEndpoints
         })
             .Produces<SuccessResponse<Product[]>>();
 
+        // List (offset) — bracketed query names: ?page[number]=2&page[size]=5.
+        // Same service and envelope as the flat-query endpoint; only the binding
+        // names differ. The query type lives in the sample, not the library.
+        group.MapGet("/page", (
+            [AsParameters] JsonApiOffsetQuery query,
+            IProductService service,
+            IHttpResultFactory http) =>
+        {
+            var offset = new OffsetQuery { Page = query.Number, Limit = query.Size };
+            var result = service.GetProducts(offset);
+
+            return result.ToResult(http, page =>
+                http.Ok(page.Items, new Meta().SetPagination(page, offset)));
+        })
+            .Produces<SuccessResponse<Product[]>>();
+
+        // List (cursor) — bracketed query names: ?page[cursor]=...&page[size]=5.
+        group.MapGet("/page-cursor", (
+            [AsParameters] JsonApiCursorQuery query,
+            IProductService service,
+            IHttpResultFactory http) =>
+        {
+            var cursor = new CursorQuery { Cursor = query.Cursor, Limit = query.Size };
+            var result = service.GetProductsCursor(cursor);
+
+            return result.ToResult(http, page =>
+                http.Ok(page.Items, new Meta().SetPagination(page)));
+        })
+            .Produces<SuccessResponse<Product[]>>();
+
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
         {

@@ -29,6 +29,8 @@ Then open <http://localhost:5232/swagger> or fire the requests in
 | `POST /products` with `text/plain` | routing, no formatter | 415 | `unsupported_media_type` via `UseOutcomeStatusCodePages()` |
 | `POST /products` with malformed JSON | `BadHttpRequestException` | 400 | `bad_request` via the exception handler |
 | `POST /mvc/products` with malformed JSON | MVC model state | 400 | `validation_error` via `InvalidModelStateResponseFactory` |
+| `GET /products/page?page[number]=2&page[size]=5` | sample `JsonApiOffsetQuery` | 200 | same success envelope, `meta.pagination` |
+| `GET /products/page-cursor?page[size]=5` | sample `JsonApiCursorQuery` | 200 | same success envelope, `meta.pagination` |
 | repeated `GET /products/ping` | rate limiter | 429 | `rate_limit_exceeded`, same envelope |
 
 The point of the last rows: application code, the MVC filter, the exception handler, routing,
@@ -47,6 +49,8 @@ Shared/
   SuccessResponse.cs         app-specific success envelope
   ErrorResponse.cs           app-specific error envelope
   Pagination.cs              offset/cursor meta; reuses the library's page math
+  JsonApiOffsetQuery.cs      bracketed page[number] / page[size] binding (sample-only)
+  JsonApiCursorQuery.cs      bracketed page[cursor] / page[size] binding (sample-only)
 Program.cs                   envelope registration, mapper setup, middleware order
 ```
 
@@ -67,6 +71,25 @@ app.UseRateLimiter();
 checks uniqueness and inserts under one lock and returns `null` when the name is taken, so two
 concurrent creates cannot both pass the check. `null` becomes
 `Outcome.Fail(new DuplicateProductName(...))` — an expected 409, not an exception.
+
+## Bracketed pagination queries
+
+`JsonApiOffsetQuery` and `JsonApiCursorQuery` bind the bracketed JSON:API query names:
+
+```text
+GET /products/page?page[number]=2&page[size]=5
+GET /products/page-cursor?page[cursor]=...&page[size]=5
+```
+
+They are **sample types**, not part of the library. `NebulaSpace.Outcome.AspNetCore` ships
+`DefaultOffsetQuery` and `DefaultCursorQuery`, which bind flat `page`/`limit` and
+`cursor`/`limit` names. Copy these two classes when an API follows the bracketed convention;
+the service layer does not change because the endpoint maps the bound values to the existing
+`OffsetQuery` / `CursorQuery`.
+
+Both types clamp their values (`Number` to `1..25`, `Size` to `1..50`) and compute `Offset`
+in 64-bit arithmetic. The response envelope is unchanged — this sample only demonstrates
+query binding.
 
 ## Rate limit
 
