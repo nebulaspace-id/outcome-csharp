@@ -56,6 +56,9 @@ public sealed class OutcomeOptions
     internal bool TryGetExceptionMapper(Type type, out Func<Exception, FailureDetails> mapper) =>
         Error.TryGetExceptionMapper(type, out mapper);
 
+    internal StatusCodeDescription GetStatusCodeDescription(int statusCode) =>
+        Error.GetStatusCodeDescription(statusCode);
+
     internal void Freeze()
     {
         Success.Freeze();

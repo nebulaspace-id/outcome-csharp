@@ -23,6 +23,79 @@ public static class OutcomeHttpExtensions
     public static IResult ToErrorResponse(this Failure failure, IHttpResultFactory factory)
         => factory.FromFailure(failure);
 
+    // ──────────────────────────────────────────────────────────────────────
+    //  Unit outcomes — success is always 204 No Content, matching [OutcomeResult]
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts an <see cref="Outcome{Unit}"/> to an HTTP response without a success
+    /// callback: success becomes <c>204 No Content</c> and a failure becomes its error
+    /// response. Use this instead of <c>ToResult(..., _ =&gt; factory.Ok())</c> so a unit
+    /// outcome always produces the same status code, whichever entry point is used.
+    /// </summary>
+    /// <param name="outcome">The unit outcome to convert.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <example>
+    /// <code>
+    /// IResult result = outcome.ToResult(http);
+    /// </code>
+    /// </example>
+    public static IResult ToResult(this Outcome<Unit> outcome, IHttpResultFactory factory)
+        => outcome.IsSuccess ? factory.NoContent() : outcome.Failure.ToErrorResponse(factory);
+
+    /// <summary>
+    /// Awaits a <c>Task&lt;Outcome&lt;Unit&gt;&gt;</c> and converts it to an HTTP response:
+    /// success becomes <c>204 No Content</c>, failure becomes its error response.
+    /// </summary>
+    /// <param name="outcomeTask">The pending unit outcome.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <example>
+    /// <code>
+    /// IResult result = await outcomeTask.ToResultAsync(http);
+    /// </code>
+    /// </example>
+    public static async Task<IResult> ToResultAsync(
+        this Task<Outcome<Unit>> outcomeTask,
+        IHttpResultFactory factory)
+    {
+        var outcome = await outcomeTask;
+        return outcome.ToResult(factory);
+    }
+
+    /// <summary>
+    /// Converts an <see cref="Outcome{Unit}"/> to an <see cref="IActionResult"/>: success
+    /// becomes <c>204 No Content</c>, failure becomes its error response.
+    /// </summary>
+    /// <param name="outcome">The unit outcome to convert.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <example>
+    /// <code>
+    /// IActionResult result = outcome.ToActionResult(http);
+    /// </code>
+    /// </example>
+    public static IActionResult ToActionResult(this Outcome<Unit> outcome, IHttpResultFactory factory)
+        => new OutcomeActionResult(outcome.ToResult(factory));
+
+    /// <summary>
+    /// Awaits a <c>Task&lt;Outcome&lt;Unit&gt;&gt;</c> and converts it to an
+    /// <see cref="IActionResult"/>: success becomes <c>204 No Content</c>, failure becomes
+    /// its error response.
+    /// </summary>
+    /// <param name="outcomeTask">The pending unit outcome.</param>
+    /// <param name="factory">The <see cref="IHttpResultFactory"/> from DI.</param>
+    /// <example>
+    /// <code>
+    /// IActionResult result = await outcomeTask.ToActionResultAsync(http);
+    /// </code>
+    /// </example>
+    public static async Task<IActionResult> ToActionResultAsync(
+        this Task<Outcome<Unit>> outcomeTask,
+        IHttpResultFactory factory)
+    {
+        var inner = await outcomeTask.ToResultAsync(factory);
+        return new OutcomeActionResult(inner);
+    }
+
     /// <summary>
     /// Converts an <see cref="Outcome{T}"/> to an HTTP response:
     /// <paramref name="onSuccess"/> builds the success result, and a failure becomes

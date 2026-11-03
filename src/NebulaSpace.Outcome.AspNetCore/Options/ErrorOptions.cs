@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using NebulaSpace.Outcome;
 using NebulaSpace.Outcome.AspNetCore.Http;
 using NebulaSpace.Outcome.AspNetCore.Models;
@@ -167,7 +168,7 @@ public sealed class ErrorOptions
     /// </summary>
     internal bool TryGetFailureMapper(Type type, out Func<Failure, FailureDetails> mapper)
     {
-        for (var current = type; current is not null && current != typeof(Failure); current = current.BaseType)
+        for (var current = type; current is not null && typeof(Failure).IsAssignableFrom(current); current = current.BaseType)
         {
             if (_failureMappers.TryGetValue(current, out mapper!))
                 return true;
@@ -217,7 +218,7 @@ public sealed class ErrorOptions
     /// </summary>
     internal bool TryGetExceptionMapper(Type type, out Func<Exception, FailureDetails> mapper)
     {
-        for (var current = type; current is not null && current != typeof(Exception); current = current.BaseType)
+        for (var current = type; current is not null && typeof(Exception).IsAssignableFrom(current); current = current.BaseType)
         {
             if (_exceptionMappers.TryGetValue(current, out mapper!))
                 return true;
@@ -225,6 +226,81 @@ public sealed class ErrorOptions
         mapper = null!;
         return false;
     }
+
+    // ── Framework error defaults ──────────────────────────────────
+
+    private readonly Dictionary<int, StatusCodeDescription> _statusCodes = CreateStatusCodes();
+
+    /// <summary>
+    /// Overrides the code and message used when the framework produces
+    /// <paramref name="statusCode"/> without running application code — a routing 404, a
+    /// method-matching 405, an authentication 401/403, a rate-limiter 429, and so on.
+    /// Consumed by <c>UseOutcomeStatusCodePages()</c>.
+    ///
+    /// <para>
+    /// Failures created in application code keep their own message and code; this table
+    /// only fills the gap for responses the framework writes with an empty body.
+    /// </para>
+    /// </summary>
+    /// <param name="statusCode">The HTTP status code. Must be an error status (400–599).</param>
+    /// <param name="code">Machine-readable code, e.g. <c>"not_found"</c>.</param>
+    /// <param name="message">Human-readable message rendered into the envelope.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="statusCode"/> is outside 400–599.</exception>
+    /// <exception cref="ArgumentException"><paramref name="code"/> is empty.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <c>null</c>.</exception>
+    /// <example>
+    /// <code>
+    /// options.Error.MapStatusCode(418, "teapot", "I am a teapot.");
+    /// </code>
+    /// </example>
+    public void MapStatusCode(int statusCode, string code, string message)
+    {
+        ThrowIfFrozen();
+        if (statusCode is < 400 or > 599)
+            throw new ArgumentOutOfRangeException(
+                nameof(statusCode), statusCode, "Only error status codes (400-599) can be mapped.");
+        if (string.IsNullOrWhiteSpace(code))
+            throw new ArgumentException("A machine-readable code is required.", nameof(code));
+        if (message is null) throw new ArgumentNullException(nameof(message));
+
+        _statusCodes[statusCode] = new StatusCodeDescription(statusCode, code, message);
+    }
+
+    /// <summary>
+    /// Returns the configured description for <paramref name="statusCode"/>. Unmapped codes
+    /// fall back to <c>http_{status}</c> plus the framework reason phrase.
+    /// </summary>
+    internal StatusCodeDescription GetStatusCodeDescription(int statusCode) =>
+        _statusCodes.TryGetValue(statusCode, out var description)
+            ? description
+            : new StatusCodeDescription(
+                statusCode,
+                $"http_{statusCode}",
+                ReasonPhrases.GetReasonPhrase(statusCode) is { Length: > 0 } reason
+                    ? reason
+                    : "The request failed.");
+
+    private static Dictionary<int, StatusCodeDescription> CreateStatusCodes() => new()
+    {
+        [StatusCodes.Status400BadRequest] = new(400, "bad_request", "The request is invalid."),
+        [StatusCodes.Status401Unauthorized] = new(401, "unauthorized", "Authentication is required."),
+        [StatusCodes.Status403Forbidden] = new(403, "forbidden", "You do not have permission to access this resource."),
+        [StatusCodes.Status404NotFound] = new(404, "not_found", "The requested resource was not found."),
+        [StatusCodes.Status405MethodNotAllowed] = new(405, "method_not_allowed", "The HTTP method is not allowed for this resource."),
+        [StatusCodes.Status406NotAcceptable] = new(406, "not_acceptable", "The requested representation is not available."),
+        [StatusCodes.Status408RequestTimeout] = new(408, "request_timeout", "The request timed out."),
+        [StatusCodes.Status409Conflict] = new(409, "conflict", "The request conflicts with the current state of the resource."),
+        [StatusCodes.Status412PreconditionFailed] = new(412, "precondition_failed", "A precondition for this request failed."),
+        [StatusCodes.Status413PayloadTooLarge] = new(413, "payload_too_large", "The request payload is too large."),
+        [StatusCodes.Status415UnsupportedMediaType] = new(415, "unsupported_media_type", "The request content type is not supported."),
+        [StatusCodes.Status422UnprocessableEntity] = new(422, "unprocessable_entity", "The request could not be processed."),
+        [StatusCodes.Status429TooManyRequests] = new(429, "too_many_requests", "Too many requests. Try again later."),
+        [StatusCodes.Status500InternalServerError] = new(500, "internal_error", "An error occurred while processing your request."),
+        [StatusCodes.Status501NotImplemented] = new(501, "not_implemented", "The requested operation is not implemented."),
+        [StatusCodes.Status502BadGateway] = new(502, "bad_gateway", "The upstream service returned an invalid response."),
+        [StatusCodes.Status503ServiceUnavailable] = new(503, "service_unavailable", "The service is temporarily unavailable."),
+        [StatusCodes.Status504GatewayTimeout] = new(504, "gateway_timeout", "The upstream service did not respond in time."),
+    };
 
     // ── Exception handling ────────────────────────────────────────
 
