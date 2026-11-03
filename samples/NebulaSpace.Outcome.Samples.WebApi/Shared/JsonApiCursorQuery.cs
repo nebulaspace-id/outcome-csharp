@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
@@ -15,34 +16,28 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// </para>
 ///
 /// <para>
-/// <see cref="Size"/> is clamped to <c>1..MaxSize</c> so a hostile query cannot request
-/// an unbounded page. The cursor stays opaque — the sample treats it as an untrusted
-/// string and the service decides whether it is valid.
+/// <see cref="Size"/> is nullable so an omitted key falls back to a default instead of
+/// failing model binding. <see cref="Limit"/> clamps it to <c>1..MaxSize</c> so a hostile
+/// query cannot request an unbounded page.
 /// </para>
 /// </summary>
 public sealed class JsonApiCursorQuery : IPaginatedQuery
 {
     private const int MaxSize = 50;
-
-    private string? _cursor;
-    private int _size = 10;
+    private const int DefaultSize = 10;
 
     /// <summary>
     /// Opaque cursor pointing to the start of the next page. <c>null</c> for the first
     /// page.
     /// </summary>
     [FromQuery(Name = "page[cursor]")]
-    public string? Cursor
-    {
-        get => _cursor;
-        set => _cursor = value;
-    }
+    public string? Cursor { get; set; }
 
-    /// <summary>Items per page, clamped to <c>1..MaxSize</c>.</summary>
+    /// <summary>Requested items per page; <c>null</c> when the client omitted it.</summary>
     [FromQuery(Name = "page[size]")]
-    public int Size
-    {
-        get => _size;
-        set => _size = Math.Clamp(value, 1, MaxSize);
-    }
+    public int? Size { get; set; }
+
+    /// <summary>Effective items per page, clamped to <c>1..MaxSize</c>.</summary>
+    [BindNever]
+    public int Limit => Math.Clamp(Size ?? DefaultSize, 1, MaxSize);
 }

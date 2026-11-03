@@ -70,15 +70,22 @@ public static class ProductEndpoints
         })
             .Produces<SuccessResponse<Product[]>>();
 
-        // List (offset) — bracketed query names: ?page[number]=2&page[size]=5.
-        // Same service and envelope as the flat-query endpoint; only the binding
-        // names differ. The query type lives in the sample, not the library.
-        group.MapGet("/page", (
+        // ── JSON:API-shaped surface ──────────────────────────────────────────
+        // Same envelope, same service, different data shape: every item is a
+        // resource object ({ type, id, attributes }) instead of the domain model.
+        // The /jsonapi prefix declares the shape; the query names are bracketed
+        // (page[number], page[size], page[cursor]) to match the convention.
+        var jsonApi = app.MapGroup("/products/jsonapi")
+            .WithTags("Minimal Api — JSON:API")
+            .RequireRateLimiting("per-ip");
+
+        // List (offset) — ?page[number]=2&page[size]=5.
+        jsonApi.MapGet("/", (
             [AsParameters] JsonApiOffsetQuery query,
             IProductService service,
             IHttpResultFactory http) =>
         {
-            var offset = new OffsetQuery { Page = query.Number, Limit = query.Size };
+            var offset = new OffsetQuery { Page = query.Page, Limit = query.Limit };
             var result = service.GetProducts(offset);
 
             return result.ToResult(http, page =>
@@ -96,13 +103,13 @@ public static class ProductEndpoints
         })
             .Produces<SuccessResponse<JsonApiResource<ProductAttributes>[]>>();
 
-        // List (cursor) — bracketed query names: ?page[cursor]=...&page[size]=5.
-        group.MapGet("/page-cursor", (
+        // List (cursor) — ?page[cursor]=...&page[size]=5.
+        jsonApi.MapGet("/cursor", (
             [AsParameters] JsonApiCursorQuery query,
             IProductService service,
             IHttpResultFactory http) =>
         {
-            var cursor = new CursorQuery { Cursor = query.Cursor, Limit = query.Size };
+            var cursor = new CursorQuery { Cursor = query.Cursor, Limit = query.Limit };
             var result = service.GetProductsCursor(cursor);
 
             return result.ToResult(http, page =>
@@ -119,6 +126,24 @@ public static class ProductEndpoints
             });
         })
             .Produces<SuccessResponse<JsonApiResource<ProductAttributes>[]>>();
+
+        // Get one — data is a single resource object, not an array.
+        jsonApi.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
+        {
+            var result = service.GetProduct(id);
+            return result.ToResult(http, product =>
+            {
+                var data = JsonApiResource.Create(
+                    "products",
+                    product.Id,
+                    new ProductAttributes(product.Name, product.Price, product.Category, product.CreatedAt));
+                var meta = new Meta();
+
+                return http.Ok(data, meta);
+            });
+        })
+            .Produces<SuccessResponse<JsonApiResource<ProductAttributes>>>()
+            .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>

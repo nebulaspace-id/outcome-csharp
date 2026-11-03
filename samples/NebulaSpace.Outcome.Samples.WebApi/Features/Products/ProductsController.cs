@@ -95,6 +95,74 @@ public class ProductsController : ControllerBase
         });
     }
 
+    // ── List (offset, JSON:API shape) ────────────────────────────────────────
+    // Same service and envelope as List; only data differs — each item is a
+    // resource object ({ type, id, attributes }). Bracketed query names are
+    // handled by JsonApiOffsetQuery, exactly as on the Minimal API side.
+
+    [HttpGet("jsonapi")]
+    [ProducesResponseType<SuccessResponse<JsonApiResource<ProductAttributes>[]>>(StatusCodes.Status200OK)]
+    public IActionResult ListJsonApi([FromQuery] JsonApiOffsetQuery query)
+    {
+        var offset = new OffsetQuery { Page = query.Page, Limit = query.Limit };
+        var result = _service.GetProducts(offset);
+        return result.ToActionResult(_http, page =>
+        {
+            var data = page.Items
+                .Select(p => JsonApiResource.Create(
+                    "products",
+                    p.Id,
+                    new ProductAttributes(p.Name, p.Price, p.Category, p.CreatedAt)))
+                .ToArray();
+            var meta = new Meta().SetPagination(page, offset);
+
+            return _http.Ok(data, meta);
+        });
+    }
+
+    // ── List (cursor, JSON:API shape) ───────────────────────────────────────
+
+    [HttpGet("jsonapi/cursor")]
+    [ProducesResponseType<SuccessResponse<JsonApiResource<ProductAttributes>[]>>(StatusCodes.Status200OK)]
+    public IActionResult ListCursorJsonApi([FromQuery] JsonApiCursorQuery query)
+    {
+        var cursor = new CursorQuery { Cursor = query.Cursor, Limit = query.Limit };
+        var result = _service.GetProductsCursor(cursor);
+        return result.ToActionResult(_http, page =>
+        {
+            var data = page.Items
+                .Select(p => JsonApiResource.Create(
+                    "products",
+                    p.Id,
+                    new ProductAttributes(p.Name, p.Price, p.Category, p.CreatedAt)))
+                .ToArray();
+            var meta = new Meta().SetPagination(page);
+
+            return _http.Ok(data, meta);
+        });
+    }
+
+    // ── Get one (JSON:API shape) ─────────────────────────────────────────────
+    // data is a single resource object, not an array.
+
+    [HttpGet("jsonapi/{id:guid}")]
+    [ProducesResponseType<SuccessResponse<JsonApiResource<ProductAttributes>>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status404NotFound)]
+    public IActionResult GetJsonApi(Guid id)
+    {
+        var result = _service.GetProduct(id);
+        return result.ToActionResult(_http, product =>
+        {
+            var data = JsonApiResource.Create(
+                "products",
+                product.Id,
+                new ProductAttributes(product.Name, product.Price, product.Category, product.CreatedAt));
+            var meta = new Meta();
+
+            return _http.Ok(data, meta);
+        });
+    }
+
     // ── Delete ───────────────────────────────────────────────────────────────
     // Success has no payload (Unit) → 204, or 404 when missing (filter pattern).
 

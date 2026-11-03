@@ -29,8 +29,10 @@ Then open <http://localhost:5232/swagger> or fire the requests in
 | `POST /products` with `text/plain` | routing, no formatter | 415 | `unsupported_media_type` via `UseOutcomeStatusCodePages()` |
 | `POST /products` with malformed JSON | `BadHttpRequestException` | 400 | `bad_request` via the exception handler |
 | `POST /mvc/products` with malformed JSON | MVC model state | 400 | `validation_error` via `InvalidModelStateResponseFactory` |
-| `GET /products/page?page[number]=2&page[size]=5` | sample `JsonApiOffsetQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
-| `GET /products/page-cursor?page[size]=5` | sample `JsonApiCursorQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
+| `GET /products` | free-form offset list | 200 | success envelope, `data: Product[]`, `meta.pagination` |
+| `GET /products/jsonapi?page[number]=2&page[size]=5` | sample `JsonApiOffsetQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
+| `GET /products/jsonapi/cursor?page[size]=5` | sample `JsonApiCursorQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
+| `GET /products/jsonapi/{id}` | JSON:API single resource | 200 | `data: { type, id, attributes }` |
 | repeated `GET /products/ping` | rate limiter | 429 | `rate_limit_exceeded`, same envelope |
 
 The point of the last rows: application code, the MVC filter, the exception handler, routing,
@@ -43,6 +45,7 @@ Features/Products/
   ProductEndpoints.cs        Minimal API surface
   ProductsController.cs      MVC mirror, same service
   ProductService.cs          business rules → Outcome<T>
+  ProductAttributes.cs       JSON:API attributes for a product (no id)
   InMemoryProductRepository.cs  storage; duplicate name returns null under one lock
   ProductErrors.cs           failures that self-map via IHttpFailure
 Shared/
@@ -73,27 +76,22 @@ checks uniqueness and inserts under one lock and returns `null` when the name is
 concurrent creates cannot both pass the check. `null` becomes
 `Outcome.Fail(new DuplicateProductName(...))` — an expected 409, not an exception.
 
-## Bracketed pagination queries
+## Two data shapes, one envelope
 
-`JsonApiOffsetQuery` and `JsonApiCursorQuery` bind the bracketed JSON:API query names:
+The envelope is configured once for the whole app, so the only thing an endpoint can
+choose per request is the shape of `data`. This sample shows both:
 
-```text
-GET /products/page?page[number]=2&page[size]=5
-GET /products/page-cursor?page[cursor]=...&page[size]=5
-```
+| Free-form | JSON:API-shaped |
+| --- | --- |
+| `GET /products?page=2&limit=10` | `GET /products/jsonapi?page[number]=2&page[size]=5` |
+| `GET /products/cursor?limit=10` | `GET /products/jsonapi/cursor?page[cursor]=...&page[size]=5` |
+| `GET /products/{id}` | `GET /products/jsonapi/{id}` |
 
-They are **sample types**, not part of the library. `NebulaSpace.Outcome.AspNetCore` ships
-`DefaultOffsetQuery` and `DefaultCursorQuery`, which bind flat `page`/`limit` and
-`cursor`/`limit` names. Copy these two classes when an API follows the bracketed convention;
-the service layer does not change because the endpoint maps the bound values to the existing
-`OffsetQuery` / `CursorQuery`.
+The MVC controller mirrors the same three routes under `/mvc/products/jsonapi`, so both
+integration styles produce the same `data` shape.
 
-Both types clamp their values (`Number` to `1..25`, `Size` to `1..50`) and compute `Offset`
-in 64-bit arithmetic.
-
-## JSON:API-shaped data
-
-Those two endpoints put a JSON:API resource object inside the existing success envelope:
+Free-form returns the domain model: `data: Product` or `data: Product[]`. The `/jsonapi`
+prefix returns resource objects instead:
 
 ```json
 {
@@ -114,14 +112,57 @@ Those two endpoints put a JSON:API resource object inside the existing success e
 }
 ```
 
+A single resource uses the same factory, and `data` becomes an object rather than an
+array. An empty page serializes as `"data": []`.
+
 `JsonApiResource.Create("products", p.Id, new ProductAttributes(...))` builds each item.
 `ProductAttributes` excludes `Id` because JSON:API keeps the identifier on the resource
-object, never inside `attributes`.
+object, never inside `attributes`. `meta` is always built into a local first, then passed
+to `http.Ok(...)` — the factory never constructs it inline.
 
-The envelope is still `SuccessResponse<T>` with `statusCode`, so this is a hybrid body, not
-a strict JSON:API document. `meta` is built into a local first and then passed to
-`http.Ok(...)`; the factory never constructs it inline. Every other endpoint stays
-free-form.
+The envelope still carries `statusCode` and the error body is still `ErrorResponse`, so
+this is a hybrid body, not a strict JSON:API document. A second app would be needed to
+demo a different envelope, a different error shape, or a different content type: those are
+app-wide settings, not per-endpoint.
+
+## Bracketed pagination queries
+
+`JsonApiOffsetQuery` and `JsonApiCursorQuery` bind the bracketed JSON:API query names:
+
+```text
+GET /products/jsonapi?page[number]=2&page[size]=5
+GET /products/jsonapi/cursor?page[cursor]=...&page[size]=5
+```
+
+They are **sample types**, not part of the library. `NebulaSpace.Outcome.AspNetCore` ships
+`DefaultOffsetQuery` and `DefaultCursorQuery`, which bind flat `page`/`limit` and
+`cursor`/`limit` names. Copy these two classes when an API follows the bracketed convention;
+the service layer does not change because the endpoint maps the bound values to the existing
+`OffsetQuery` / `CursorQuery`.
+
+Both types treat their query keys as optional: omitting `page[number]` uses page 1, omitting
+`page[size]` uses 10. Values are clamped (`Page` to `1..25`, `Limit` to `1..50`) and
+`Offset` is computed in 64-bit arithmetic.
+
+## Capability map
+
+| Capability | Where | Shape |
+| --- | --- | --- |
+| Success envelope, no payload | `GET /products/ping` | `{ statusCode, meta }` |
+| Free-form payload | `GET /products`, `/products/cursor`, `/products/{id}` | `data: Product` / `Product[]` |
+| JSON:API collection | `GET /products/jsonapi`, `/products/jsonapi/cursor` | `data: [ { type, id, attributes } ]` |
+| JSON:API single resource | `GET /products/jsonapi/{id}` | `data: { type, id, attributes }` |
+| Empty page | `GET /products/jsonapi?page[number]=25&page[size]=50` | `data: []` |
+| Per-field validation | `POST /products` with an invalid body | `errors` map, 400 |
+| Self-mapping failure | `POST /products` with a duplicate name | 409 |
+| 204 without a body | `DELETE /products/{id}` | empty |
+| Framework status pages | unknown route, wrong method, rate limit | 404 / 405 / 429 envelope |
+| MVC mirror | `/mvc/products` | same as Minimal API |
+| MVC mirror, JSON:API | `/mvc/products/jsonapi` | same as Minimal API `/jsonapi` |
+
+Two error paths are configured in `Program.cs` but have no HTTP trigger: the
+`QuotaExceededFailure` mapping (422) and the `DomainException` mapping (422). The unhandled
+exception path (generic 500 envelope) is likewise only reachable from a real bug.
 
 ## Rate limit
 

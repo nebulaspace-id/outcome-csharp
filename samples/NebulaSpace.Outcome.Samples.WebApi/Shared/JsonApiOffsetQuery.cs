@@ -16,38 +16,38 @@ namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 /// </para>
 ///
 /// <para>
-/// Values are clamped to table-safe bounds: <see cref="Number"/> to
-/// <c>1..MaxPage</c> and <see cref="Size"/> to <c>1..MaxSize</c>.
+/// The bound properties are nullable so an omitted key falls back to a default instead of
+/// failing model binding. <see cref="Page"/> and <see cref="Limit"/> clamp the result:
+/// page to <c>1..MaxPage</c>, size to <c>1..MaxSize</c>.
 /// </para>
 /// </summary>
 public sealed class JsonApiOffsetQuery : IPaginatedQuery
 {
     private const int MaxPage = 25;
     private const int MaxSize = 50;
+    private const int DefaultNumber = 1;
+    private const int DefaultSize = 10;
 
-    private int _number = 1;
-    private int _size = 10;
-
-    /// <summary>1-based page number, clamped to <c>1..MaxPage</c>.</summary>
+    /// <summary>Requested page number; <c>null</c> when the client omitted it.</summary>
     [FromQuery(Name = "page[number]")]
-    public int Number
-    {
-        get => _number;
-        set => _number = Math.Clamp(value, 1, MaxPage);
-    }
+    public int? Number { get; set; }
 
-    /// <summary>Items per page, clamped to <c>1..MaxSize</c>.</summary>
+    /// <summary>Requested items per page; <c>null</c> when the client omitted it.</summary>
     [FromQuery(Name = "page[size]")]
-    public int Size
-    {
-        get => _size;
-        set => _size = Math.Clamp(value, 1, MaxSize);
-    }
+    public int? Size { get; set; }
+
+    /// <summary>Effective 1-based page number, clamped to <c>1..MaxPage</c>.</summary>
+    [BindNever]
+    public int Page => Math.Clamp(Number ?? DefaultNumber, 1, MaxPage);
+
+    /// <summary>Effective items per page, clamped to <c>1..MaxSize</c>.</summary>
+    [BindNever]
+    public int Limit => Math.Clamp(Size ?? DefaultSize, 1, MaxSize);
 
     /// <summary>
-    /// The 0-based offset of the first item in this page, i.e. <c>(Number - 1) * Size</c>.
+    /// The 0-based offset of the first item in this page, i.e. <c>(Page - 1) * Limit</c>.
     /// Multiplied in 64-bit arithmetic so it cannot overflow.
     /// </summary>
     [BindNever]
-    public int Offset => (int)Math.Min((long)(_number - 1) * _size, int.MaxValue);
+    public int Offset => (int)Math.Min((long)(Page - 1) * Limit, int.MaxValue);
 }
