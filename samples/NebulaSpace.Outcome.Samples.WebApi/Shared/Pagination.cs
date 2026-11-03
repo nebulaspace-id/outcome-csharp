@@ -1,4 +1,6 @@
-﻿namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
+﻿using NebulaSpace.Outcome.AspNetCore.Pagination;
+
+namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
 
 /// <summary>
 /// The page details for a paged response, nested under <see cref="Meta.Pagination"/>.
@@ -48,17 +50,17 @@ public sealed class Pagination
     /// </summary>
     public static Pagination Offset<T>(OffsetResult<T> result, OffsetQuery query)
     {
-        var totalPages = result.TotalCount == 0
-            ? 0
-            : (int)Math.Ceiling((double)result.TotalCount / query.Limit);
+        // Reuse the library's 64-bit page math instead of re-deriving it: the sample
+        // cannot drift from the shipped DefaultOffsetPagination behavior.
+        var page = DefaultOffsetPagination.Create(query.Page, query.Limit, result.TotalCount);
 
         return new Pagination
         {
-            Page = query.Page,
-            Limit = query.Limit,
-            TotalItems = result.TotalCount,
-            TotalPages = totalPages,
-            HasMore = query.Page < totalPages,
+            Page = page.Page,
+            Limit = page.Limit,
+            TotalItems = page.TotalItems,
+            TotalPages = page.TotalPages,
+            HasMore = page.HasMore,
         };
     }
 

@@ -56,14 +56,6 @@ public sealed class InMemoryProductRepository : IProductRepository
     public Product? GetById(Guid id) =>
         _products.TryGetValue(id, out var product) ? product : null;
 
-    public bool ExistsByName(string name)
-    {
-        lock (_gate)
-        {
-            return _ordered.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        }
-    }
-
     public Shared.OffsetResult<Product> GetAll(Shared.OffsetQuery query)
     {
         lock (_gate)
@@ -106,19 +98,21 @@ public sealed class InMemoryProductRepository : IProductRepository
         }
     }
 
-    public Product Add(Product product)
+    public Product? Add(Product product)
     {
         // The uniqueness check and the insert happen under one lock so two concurrent
         // creates cannot both pass the check (TOCTOU).
         lock (_gate)
         {
-            // Defense-in-depth invariant: the service already checks uniqueness and
-            // generates fresh ids, so reaching these guards means a real bug.
+            // Defense-in-depth invariant: the service generates fresh ids, so reaching
+            // this guard means a real bug.
             if (_products.ContainsKey(product.Id))
                 throw new DomainException($"Invariant violated: product id '{product.Id}' already exists.");
 
+            // A duplicate name is an expected failure, not a bug: return null and let
+            // the service turn it into DuplicateProductName (409).
             if (_ordered.Any(p => p.Name.Equals(product.Name, StringComparison.OrdinalIgnoreCase)))
-                throw new DomainException($"Invariant violated: product name '{product.Name}' already exists.");
+                return null;
 
             _products[product.Id] = product;
             _ordered.Add(product);

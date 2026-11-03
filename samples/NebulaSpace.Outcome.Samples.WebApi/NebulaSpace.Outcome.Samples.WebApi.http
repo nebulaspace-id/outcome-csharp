@@ -1,0 +1,80 @@
+@host = http://localhost:5232
+
+### Ping — 200, envelope with no data key
+GET {{host}}/products/ping
+
+### Create — 201 with a Location header
+POST {{host}}/products
+Content-Type: application/json
+
+{
+  "name": "Mechanical Keyboard",
+  "price": 129.9,
+  "category": "peripherals"
+}
+
+### Create again with the same name — 409 duplicate_product_name
+POST {{host}}/products
+Content-Type: application/json
+
+{
+  "name": "Mechanical Keyboard",
+  "price": 99,
+  "category": "peripherals"
+}
+
+### Invalid body — 400 validation_error with per-field errors
+POST {{host}}/products
+Content-Type: application/json
+
+{
+  "name": "",
+  "price": 0,
+  "category": ""
+}
+
+### Malformed JSON — 400 from BadHttpRequestException, same envelope
+POST {{host}}/products
+Content-Type: application/json
+
+{ "name": "Oops",
+
+### List — offset pagination, meta.pagination
+GET {{host}}/products?page=1&limit=10
+
+### List — cursor pagination
+GET {{host}}/products/cursor?limit=10
+
+### Unknown product — 404 not_found from a returned failure
+GET {{host}}/products/00000000-0000-0000-0000-000000000000
+
+### Unknown route — 404 not_found from routing (no handler ran)
+GET {{host}}/nothing-here
+
+### Wrong method — 405 method_not_allowed from routing
+DELETE {{host}}/products
+
+### Unsupported media type — 415 unsupported_media_type
+POST {{host}}/products
+Content-Type: text/plain
+
+hello
+
+### MVC mirror — same handlers, same envelopes
+GET {{host}}/mvc/products/ping
+
+### MVC invalid body — model-state 400 rendered as your envelope
+POST {{host}}/mvc/products
+Content-Type: application/json
+
+{ "name": "Oops",
+
+### MVC get one — [OutcomeResult] filter maps 404
+GET {{host}}/mvc/products/00000000-0000-0000-0000-000000000000
+
+### Too many requests — 429 rate_limit_exceeded (10 per minute per IP)
+# Run this repeatedly; the rejection uses the same error envelope.
+GET {{host}}/products/ping
+
+### Swagger is excluded from status-code rewriting
+GET {{host}}/swagger/index.html

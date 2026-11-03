@@ -3,7 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.OpenApi.Models;
 using NebulaSpace.Outcome.AspNetCore.Extensions;
 using NebulaSpace.Outcome.AspNetCore.Http;
@@ -87,6 +89,16 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 
+// ── Framework errors ──────────────────────────────────────────────────────
+
+builder.Services.Configure<RouteHandlerOptions>(options =>
+{
+    // Malformed minimal-API payloads should throw BadHttpRequestException so the
+    // exception handler can render the error envelope. The framework default is
+    // environment-dependent; pin it so Development and Production behave the same.
+    options.ThrowOnBadRequest = true;
+});
+
 // ── Outcome ───────────────────────────────────────────────────────────────
 
 builder.Services.AddOutcome(options =>
@@ -129,6 +141,12 @@ var app = builder.Build();
 // FIRST: wraps rate limiting, routing, and endpoints, so an exception anywhere
 // still produces the library's error envelope.
 app.UseOutcomeExceptionHandler();
+
+// Framework-generated errors (routing 404, 405, 415, auth 401/403, rate-limit 429)
+// bypass handlers entirely. This rewrites their empty bodies with the same error
+// envelope, so clients parse exactly one error shape.
+app.UseOutcomeStatusCodePages();
+
 app.UseRouting();
 app.UseRateLimiter();
 app.UseHttpsRedirection();

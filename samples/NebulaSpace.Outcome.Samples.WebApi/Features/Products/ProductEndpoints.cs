@@ -74,7 +74,7 @@ public static class ProductEndpoints
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
         {
             var result = service.DeleteProduct(id);
-            return result.ToResult(http, _ => http.NoContent());
+            return result.ToResult(http);
         })
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ErrorResponse>(StatusCodes.Status404NotFound);

@@ -53,18 +53,20 @@ public sealed class ProductService : IProductService
             return Outcome.Fail(new ValidationFailure("Validation Error", errors));
         }
 
-        // Business rule: product names must be unique. An expected conflict, so it
-        // is an outcome, not an exception. The repository re-checks under a lock.
-        if (_repo.ExistsByName(request.Name))
-            return Outcome.Fail(new DuplicateProductName(request.Name));
-
-        return _repo.Add(new Product(
+        // Business rule: product names must be unique. The repository performs the check
+        // and the insert under one lock, so a concurrent create cannot slip past a
+        // separate pre-check; null means the name is already taken.
+        var product = _repo.Add(new Product(
             Id: Guid.NewGuid(),
             Name: request.Name,
             Price: request.Price,
             Category: request.Category,
             CreatedAt: DateTime.UtcNow
         ));
+
+        return product is null
+            ? Outcome.Fail(new DuplicateProductName(request.Name))
+            : product;
     }
 
     public Outcome<Unit> DeleteProduct(Guid productId)

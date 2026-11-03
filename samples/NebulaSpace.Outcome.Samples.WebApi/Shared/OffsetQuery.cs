@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NebulaSpace.Outcome.AspNetCore.Pagination;
 
 namespace NebulaSpace.Outcome.Samples.WebApi.Shared;
@@ -46,6 +47,8 @@ public sealed class OffsetQuery : IPaginatedQuery
 
     /// <summary>
     /// The 0-based offset of the first item in this page, i.e. <c>(Page - 1) * Limit</c>.
+    /// Multiplied in 64-bit arithmetic, matching <see cref="DefaultOffsetQuery"/>.
     /// </summary>
-    public int Offset => (Page - 1) * Limit;
+    [BindNever]
+    public int Offset => (int)Math.Min((long)(Page - 1) * Limit, int.MaxValue);
 }
