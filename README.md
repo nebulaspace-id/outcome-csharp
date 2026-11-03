@@ -82,10 +82,14 @@ group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory
 
 Implicit conversions keep the success branch short: `return product` lifts a raw value into
 a success. Failures are always explicit — `return Outcome.Fail(new ProductNotFound(id))` —
-so a failure can never be mistaken for a payload that ends up in `data`. A `null` value does
-**not** silently become a success: the implicit conversion throws. Use
-`Outcome<T>.Success(null!)` when a null payload is intentional. The same `Outcome<T>`
-works for single reads, pages, commands, and deletes.
+so a failure can never be mistaken for a payload that ends up in `data`.
+
+`null` is a valid success payload and passes through the same conversion, because `T?` is
+only a compile-time annotation: `Outcome<Product>` and `Outcome<Product?>` are the same
+runtime type. A `return null;` therefore becomes a 200 with a null payload. Declare the
+method as `Outcome<Product?>` when null is an intended result, and keep
+`Outcome.Fail(new ProductNotFound(id))` for a missing resource. The same `Outcome<T>` works
+for single reads, pages, commands, and deletes.
 
 | Member | Description |
 | --- | --- |

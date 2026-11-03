@@ -89,9 +89,8 @@ public readonly struct Outcome<T> : IOutcome, IEquatable<Outcome<T>>
 
     /// <summary>Creates a successful outcome carrying <paramref name="value"/>.</summary>
     /// <remarks>
-    /// A <c>null</c> value is allowed only through this explicit factory. The implicit
-    /// conversion from <typeparamref name="T"/> rejects <c>null</c>, so <c>return null;</c>
-    /// can never silently become a successful outcome.
+    /// A <c>null</c> value is allowed. Use this factory when making a null payload explicit
+    /// reads better than relying on the implicit conversion.
     /// </remarks>
     public static Outcome<T> Success(T value) => new(value);
 
@@ -100,16 +99,15 @@ public readonly struct Outcome<T> : IOutcome, IEquatable<Outcome<T>>
     public static Outcome<T> Fail(Failure failure) => new(failure);
 
     /// <summary>
-    /// Implicitly converts a raw value into a successful outcome. A <c>null</c> value is
-    /// rejected — use <see cref="Success"/> to make a null payload explicit.
+    /// Implicitly converts a raw value into a successful outcome, including <c>null</c>.
     /// </summary>
-    public static implicit operator Outcome<T>(T value) =>
-        value is null
-            ? throw new ArgumentNullException(
-                nameof(value),
-                $"Cannot convert null to Outcome<{typeof(T).Name}>. Use Outcome<{typeof(T).Name}>.Success(value) " +
-                "when a null payload is intentional, or Outcome<" + typeof(T).Name + ">.Fail(failure).")
-            : Success(value);
+    /// <remarks>
+    /// <c>T?</c> is a compile-time annotation only: <c>Outcome&lt;Product&gt;</c> and
+    /// <c>Outcome&lt;Product?&gt;</c> share the same runtime type, so the operator cannot tell
+    /// them apart. A <c>return null;</c> therefore becomes a success with a null payload.
+    /// Declare the method as <c>Outcome&lt;Product?&gt;</c> when null is an intended result.
+    /// </remarks>
+    public static implicit operator Outcome<T>(T value) => Success(value);
 
     /// <summary>
     /// Implicitly converts a failed unit outcome, preserving the failure. A <b>successful</b>

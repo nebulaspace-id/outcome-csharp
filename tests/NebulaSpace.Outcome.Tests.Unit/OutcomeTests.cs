@@ -237,13 +237,21 @@ public class OutcomeTests
         }
 
         [Fact]
-        public void ImplicitConversion_FromNull_Throws()
+        public void ImplicitConversion_FromNull_IsSuccessWithNullValue()
         {
-            Assert.Throws<ArgumentNullException>(() =>
-            {
-                Outcome<string> outcome = (string)null!;
-                _ = outcome;
-            });
+            Outcome<string> outcome = (string)null!;
+
+            Assert.True(outcome.IsSuccess);
+            Assert.Null(outcome.Value);
+        }
+
+        [Fact]
+        public void ImplicitConversion_FromNullNullableValueType_IsSuccessWithNullValue()
+        {
+            Outcome<int?> outcome = (int?)null;
+
+            Assert.True(outcome.IsSuccess);
+            Assert.Null(outcome.Value);
         }
 
         [Fact]

@@ -7,7 +7,7 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 ## P0 — Security & correctness
 
 - [x] `Outcome<T>` never reports a failure without a `Failure`; `default(Outcome<T>)` throws a clear error instead of an NRE.
-- [x] `Outcome<T>.Fail(null)` and implicit conversion from `null` are rejected.
+- [x] `Outcome<T>.Fail(null)` is rejected, and a successful `Outcome<Unit>` cannot be lifted into `Outcome<T>`. A `null` value is a valid success payload, so the implicit conversion from `null` succeeds; `Outcome<Product?>` is the signature that states null is intended.
 - [x] Pagination arithmetic cannot overflow (`long` math, validated bounds); default query types clamp page/limit to safe caps.
 - [x] Unknown failure → HTTP 500 does not expose the internal failure message.
 - [x] Exception middleware: client aborts rethrow; mapped exceptions logged as warnings; `BadHttpRequestException` maps to its status; CORS/Vary headers survive reset.
@@ -46,7 +46,7 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 ## Verification
 
 - `dotnet build outcome-csharp.slnx -c Release -warnaserror` → 0 warnings, 0 errors (all TFMs).
-- `dotnet test outcome-csharp.slnx -c Release` → 210 tests, all passing (33 core, 164 ASP.NET Core unit, 13 integration).
+- `dotnet test outcome-csharp.slnx -c Release` → 211 tests, all passing (34 core, 164 ASP.NET Core unit, 13 integration).
 - `dotnet pack` → `NebulaSpace.Outcome.0.5.0` + `NebulaSpace.Outcome.AspNetCore.0.8.0` (`.nupkg` + `.snupkg`).
 - Sample smoke test (`dotnet run`, `http://localhost:5232`): ping 200, list 200, 404 envelope, validation 400 with field errors, create 201 + `Location`, duplicate 409, routing-driven 404/405/415 with the configured envelope, MVC model-state 400 as `validation_error`, delete 204, HEAD 404 without body, Swagger 200, MVC 200, rate limit 429 with `Retry-After` and the configured envelope.
 - Regression tests cover every P0 item.
