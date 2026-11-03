@@ -7,7 +7,7 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 ## P0 — Security & correctness
 
 - [x] `Outcome<T>` never reports a failure without a `Failure`; `default(Outcome<T>)` throws a clear error instead of an NRE.
-- [x] `Outcome<T>.Fail(null)` is rejected, and a successful `Outcome<Unit>` cannot be lifted into `Outcome<T>`. A `null` value is a valid success payload, so the implicit conversion from `null` succeeds; `Outcome<Product?>` is the signature that states null is intended.
+- [x] `Outcome<T>.Fail(null)` is rejected. `null` is a valid success payload, so the implicit conversion from `null` succeeds; `Outcome<Product?>` is the signature that states null is intended.
 - [x] Pagination arithmetic cannot overflow (`long` math, validated bounds); default query types clamp page/limit to safe caps.
 - [x] Unknown failure → HTTP 500 does not expose the internal failure message.
 - [x] Exception middleware: client aborts rethrow; mapped exceptions logged as warnings; `BadHttpRequestException` maps to its status; CORS/Vary headers survive reset.
@@ -15,7 +15,7 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 - [x] Reflection-based envelope registration fails fast at startup, never at request time.
 - [x] `Created` validates the `Location` value (no empty/CRLF header injection).
 - [x] Base-type mappers actually match: `MapFailure<Failure>` and `MapException<Exception>` are consulted for derived types instead of stopping before the base class.
-- [x] A successful `Outcome<Unit>` can no longer be lifted into `Outcome<T>` with a null/default payload — the conversion throws with guidance.
+- [x] A successful `Outcome<Unit>` cannot be lifted into `Outcome<T>` with a null/default payload — "no payload" is not the same as "payload is null", so the conversion throws with guidance.
 
 ## P1 — Design & API
 

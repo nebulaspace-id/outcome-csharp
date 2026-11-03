@@ -89,8 +89,8 @@ public readonly struct Outcome<T> : IOutcome, IEquatable<Outcome<T>>
 
     /// <summary>Creates a successful outcome carrying <paramref name="value"/>.</summary>
     /// <remarks>
-    /// A <c>null</c> value is allowed. Use this factory when making a null payload explicit
-    /// reads better than relying on the implicit conversion.
+    /// A <c>null</c> value is allowed. Use this factory when you want the null payload to be
+    /// explicit at the call site.
     /// </remarks>
     public static Outcome<T> Success(T value) => new(value);
 

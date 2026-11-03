@@ -58,8 +58,8 @@ dotnet add package NebulaSpace.Outcome.AspNetCore
 ## The idea in 30 seconds
 
 A service method returns `Outcome<T>`: either a **success with a value** or a **failure
-with a reason**. No exceptions for expected errors, no `null` checks, no hand-rolled
-result classes. The endpoint turns the outcome into an HTTP response in one line:
+with a reason**. No exceptions for expected errors, no hand-rolled result
+classes. The endpoint turns the outcome into an HTTP response in one line:
 
 ```csharp
 // Service. Same shape whether the call can fail or not.
