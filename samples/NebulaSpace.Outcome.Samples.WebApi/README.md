@@ -29,8 +29,8 @@ Then open <http://localhost:5232/swagger> or fire the requests in
 | `POST /products` with `text/plain` | routing, no formatter | 415 | `unsupported_media_type` via `UseOutcomeStatusCodePages()` |
 | `POST /products` with malformed JSON | `BadHttpRequestException` | 400 | `bad_request` via the exception handler |
 | `POST /mvc/products` with malformed JSON | MVC model state | 400 | `validation_error` via `InvalidModelStateResponseFactory` |
-| `GET /products/page?page[number]=2&page[size]=5` | sample `JsonApiOffsetQuery` | 200 | same success envelope, `meta.pagination` |
-| `GET /products/page-cursor?page[size]=5` | sample `JsonApiCursorQuery` | 200 | same success envelope, `meta.pagination` |
+| `GET /products/page?page[number]=2&page[size]=5` | sample `JsonApiOffsetQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
+| `GET /products/page-cursor?page[size]=5` | sample `JsonApiCursorQuery` | 200 | JSON:API-shaped `data` + `meta.pagination` |
 | repeated `GET /products/ping` | rate limiter | 429 | `rate_limit_exceeded`, same envelope |
 
 The point of the last rows: application code, the MVC filter, the exception handler, routing,
@@ -51,6 +51,7 @@ Shared/
   Pagination.cs              offset/cursor meta; reuses the library's page math
   JsonApiOffsetQuery.cs      bracketed page[number] / page[size] binding (sample-only)
   JsonApiCursorQuery.cs      bracketed page[cursor] / page[size] binding (sample-only)
+  JsonApiResource.cs         JSON:API resource object + static factory (sample-only)
 Program.cs                   envelope registration, mapper setup, middleware order
 ```
 
@@ -88,8 +89,39 @@ the service layer does not change because the endpoint maps the bound values to 
 `OffsetQuery` / `CursorQuery`.
 
 Both types clamp their values (`Number` to `1..25`, `Size` to `1..50`) and compute `Offset`
-in 64-bit arithmetic. The response envelope is unchanged — this sample only demonstrates
-query binding.
+in 64-bit arithmetic.
+
+## JSON:API-shaped data
+
+Those two endpoints put a JSON:API resource object inside the existing success envelope:
+
+```json
+{
+  "statusCode": 200,
+  "data": [
+    {
+      "type": "products",
+      "id": "3c999947-6b69-4404-bf52-97e7555f656d",
+      "attributes": {
+        "name": "Monitor Stand",
+        "price": 147.64,
+        "category": "Electronics",
+        "createdAt": "2026-09-18T07:09:28.4586591Z"
+      }
+    }
+  ],
+  "meta": { "pagination": { ... }, "timestamp": "..." }
+}
+```
+
+`JsonApiResource.Create("products", p.Id, new ProductAttributes(...))` builds each item.
+`ProductAttributes` excludes `Id` because JSON:API keeps the identifier on the resource
+object, never inside `attributes`.
+
+The envelope is still `SuccessResponse<T>` with `statusCode`, so this is a hybrid body, not
+a strict JSON:API document. `meta` is built into a local first and then passed to
+`http.Ok(...)`; the factory never constructs it inline. Every other endpoint stays
+free-form.
 
 ## Rate limit
 

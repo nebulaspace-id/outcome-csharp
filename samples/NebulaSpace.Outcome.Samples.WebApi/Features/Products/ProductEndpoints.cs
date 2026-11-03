@@ -82,9 +82,19 @@ public static class ProductEndpoints
             var result = service.GetProducts(offset);
 
             return result.ToResult(http, page =>
-                http.Ok(page.Items, new Meta().SetPagination(page, offset)));
+            {
+                var data = page.Items
+                    .Select(p => JsonApiResource.Create(
+                        "products",
+                        p.Id,
+                        new ProductAttributes(p.Name, p.Price, p.Category, p.CreatedAt)))
+                    .ToArray();
+                var meta = new Meta().SetPagination(page, offset);
+
+                return http.Ok(data, meta);
+            });
         })
-            .Produces<SuccessResponse<Product[]>>();
+            .Produces<SuccessResponse<JsonApiResource<ProductAttributes>[]>>();
 
         // List (cursor) — bracketed query names: ?page[cursor]=...&page[size]=5.
         group.MapGet("/page-cursor", (
@@ -96,9 +106,19 @@ public static class ProductEndpoints
             var result = service.GetProductsCursor(cursor);
 
             return result.ToResult(http, page =>
-                http.Ok(page.Items, new Meta().SetPagination(page)));
+            {
+                var data = page.Items
+                    .Select(p => JsonApiResource.Create(
+                        "products",
+                        p.Id,
+                        new ProductAttributes(p.Name, p.Price, p.Category, p.CreatedAt)))
+                    .ToArray();
+                var meta = new Meta().SetPagination(page);
+
+                return http.Ok(data, meta);
+            });
         })
-            .Produces<SuccessResponse<Product[]>>();
+            .Produces<SuccessResponse<JsonApiResource<ProductAttributes>[]>>();
 
         // Delete — success has no payload (Unit); 204, or 404 when missing.
         group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
