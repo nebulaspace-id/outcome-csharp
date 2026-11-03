@@ -76,7 +76,11 @@ public Outcome<OffsetResult<Product>> GetProducts(OffsetQuery q) =>
 group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
 {
     var result = service.GetProduct(id);
-    return result.ToResult(http, product => http.Ok(product, new Meta()));
+    return result.ToResult(http, product =>
+    {
+        var meta = new Meta();
+        return http.Ok(product, meta);
+    });
 });
 ```
 
