@@ -14,6 +14,8 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 - [x] `FailureDetails` rejects status codes outside 100–999.
 - [x] Reflection-based envelope registration fails fast at startup, never at request time.
 - [x] `Created` validates the `Location` value (no empty/CRLF header injection).
+- [x] Base-type mappers actually match: `MapFailure<Failure>` and `MapException<Exception>` are consulted for derived types instead of stopping before the base class.
+- [x] A successful `Outcome<Unit>` can no longer be lifted into `Outcome<T>` with a null/default payload — the conversion throws with guidance.
 
 ## P1 — Design & API
 
@@ -24,15 +26,17 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 - [x] Implementation types are internal (`ErrorEnvelopeResult`, `SuccessEnvelopeResult<T>`, `OutcomeActionResult`, `HttpResultFactory`); public surface is the interfaces + extensions. `CreatedResult<T>` folded into `SuccessEnvelopeResult<T>` via `locationUri`.
 - [x] Options are frozen after `AddOutcome`; post-startup mutation throws.
 - [x] `UseOutcomeExceptionHandler` fails fast when `AddOutcome` was not called.
+- [x] Every response uses the configured envelopes: `AddOutcomeMvcFilter()` maps model-state 400s, `UseOutcomeStatusCodePages()` maps routing 404/405/415, auth 401/403, and rate-limiter 429 with overridable `MapStatusCode` defaults.
 
 ## P2 — Developer experience
 
 - [x] XML docs, PDB + `.snupkg`, SourceLink enabled; `GenerateDocumentationFile=true`.
 - [x] ASP.NET Core package multi-targets `net8.0;net9.0;net10.0`; fake TFM metadata removed.
-- [x] Lockstep package version (`VersionPrefix=0.8.0`), `global.json`, `.editorconfig`, warnings-as-errors in `script.sh`; SourceLink bumped past the `NU1902` advisory.
+- [x] Independent package versions (`NebulaSpace.Outcome` 0.5.0, `NebulaSpace.Outcome.AspNetCore` 0.8.0), `global.json`, `.editorconfig`, warnings-as-errors in `script.sh`; SourceLink bumped past the `NU1902` advisory.
 - [x] Empty integration test project removed; test/sample dependencies aligned.
 - [x] README examples compile; stale claims removed; Unit/204, error-shape, pagination-cap, and rate-limiter guidance updated.
 - [x] Sample: thread-safe in-memory repository (lock + no TOCTOU), per-IP rate-limit partition with `Retry-After`, validation returns a failure value, single OpenAPI stack (Swashbuckle only), middleware order fixed, `ProductService` scoped to match FluentValidation.
+- [x] Sample: duplicate-name check moved into the repository lock (`Add` returns `null` → 409, no 422 race), pagination math reuses `DefaultOffsetPagination`, plus a sample `README.md` and a `.http` request collection for every response shape.
 
 ## Deviations
 
@@ -42,7 +46,7 @@ Out of scope: GitHub Actions CI workflow (explicitly deferred).
 ## Verification
 
 - `dotnet build outcome-csharp.slnx -c Release -warnaserror` → 0 warnings, 0 errors (all TFMs).
-- `dotnet test outcome-csharp.slnx -c Release` → 196 tests, all passing (33 core, 150 ASP.NET Core unit, 13 integration).
-- `dotnet pack` → `NebulaSpace.Outcome.0.8.0` + `NebulaSpace.Outcome.AspNetCore.0.8.0` (`.nupkg` + `.snupkg`).
-- Sample smoke test (`dotnet run`, `http://localhost:5099`): ping 200, list 200, 404 envelope, validation 400 with field errors, create 201 + `Location`, Swagger 200, MVC 200, rate limit 429 with `Retry-After` and the configured envelope.
+- `dotnet test outcome-csharp.slnx -c Release` → 210 tests, all passing (33 core, 164 ASP.NET Core unit, 13 integration).
+- `dotnet pack` → `NebulaSpace.Outcome.0.5.0` + `NebulaSpace.Outcome.AspNetCore.0.8.0` (`.nupkg` + `.snupkg`).
+- Sample smoke test (`dotnet run`, `http://localhost:5232`): ping 200, list 200, 404 envelope, validation 400 with field errors, create 201 + `Location`, duplicate 409, routing-driven 404/405/415 with the configured envelope, MVC model-state 400 as `validation_error`, delete 204, HEAD 404 without body, Swagger 200, MVC 200, rate limit 429 with `Retry-After` and the configured envelope.
 - Regression tests cover every P0 item.

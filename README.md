@@ -50,6 +50,7 @@ dotnet add package NebulaSpace.Outcome.AspNetCore
   - [Pattern 1: `[OutcomeResult]` filter](#pattern-1-outcomeresult-filter)
   - [Pattern 2: explicit `ToActionResult`](#pattern-2-explicit-toactionresult)
 - [Exception handling](#exception-handling)
+  - [Framework-generated errors](#framework-generated-errors)
 - [Rate limiting](#rate-limiting)
 
 ---
@@ -62,8 +63,11 @@ result classes. The endpoint turns the outcome into an HTTP response in one line
 
 ```csharp
 // Service. Same shape whether the call can fail or not.
-public Outcome<Product> GetProduct(Guid id) =>
-    _repo.GetById(id) ?? new ProductNotFound(id);
+public Outcome<Product> GetProduct(Guid id)
+{
+    var product = _repo.GetById(id);
+    return product is null ? Outcome.Fail(new ProductNotFound(id)) : product;
+}
 
 public Outcome<OffsetResult<Product>> GetProducts(OffsetQuery q) =>
     _repo.GetAll(q);                       // a page of items is just a value
@@ -76,9 +80,10 @@ group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory
 });
 ```
 
-Implicit conversions keep call sites short: `return product` lifts a raw value into a
-success, `return new ProductNotFound(id)` lifts a failure. A `null` value does **not**
-silently become a success — the implicit conversion throws; use
+Implicit conversions keep the success branch short: `return product` lifts a raw value into
+a success. Failures are always explicit — `return Outcome.Fail(new ProductNotFound(id))` —
+so a failure can never be mistaken for a payload that ends up in `data`. A `null` value does
+**not** silently become a success: the implicit conversion throws. Use
 `Outcome<T>.Success(null!)` when a null payload is intentional. The same `Outcome<T>`
 works for single reads, pages, commands, and deletes.
 
@@ -159,24 +164,25 @@ so the outcome type still reads honestly:
 public Outcome<Unit> DeleteProduct(Guid id)
 {
     if (!_repo.Delete(id))
-        return new ProductNotFound(id);
+        return Outcome.Fail(new ProductNotFound(id));
 
     return Outcome.Success();       // Outcome<Unit>
 }
 
-// Endpoint. 204 is the usual choice for a successful delete:
+// Endpoint. A payload-less success is 204 in every entry point:
+// the filter and this overload both use NoContent.
 group.MapDelete("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
 {
     var result = service.DeleteProduct(id);
-    return result.ToResult(http, _ => http.NoContent());
+    return result.ToResult(http);   // 204, or the error envelope
 })
     .Produces(StatusCodes.Status204NoContent)
     .Produces<ErrorResponse>(StatusCodes.Status404NotFound);
 ```
 
-`Outcome<Unit>` still flows through the same envelope when you want a 200 body instead
-of 204: `http.Ok()` returns the registered envelope with no `data` key at all (the
-payload is absent, and `WhenWritingNull` omits it). For documentation, annotate that
+Need a 200 with a body instead of 204? Pass a success callback explicitly:
+`result.ToResult(http, _ => http.Ok())` returns the registered envelope with no `data` key at
+all (the payload is absent, and `WhenWritingNull` omits it). For documentation, annotate that
 endpoint with `.Produces<SuccessResponse<Unit>>()` (or
 `[ProducesResponseType<SuccessResponse<Unit>>(StatusCodes.Status200OK)]` in MVC), like
 the sample's ping endpoint — but note the emitted body is
@@ -192,6 +198,7 @@ that `data` exists.
 | Links / HATEOAS | A `Links` (or similar) property on your own `Meta` | The library has no HATEOAS support today: no link relations, no rel builders, no automatic `self`/`next` links. Responses carry `data` and `meta` only, so hypermedia is up to your envelope |
 | Custom error status per failure | `IHttpFailure` on the failure, or `options.Error.MapFailure<T>(…)` | Unknown failures fall back to 500, never throw |
 | Exceptions mapped to your envelope | `options.Error.MapException<T>(…)` plus `app.UseOutcomeExceptionHandler()` | Unhandled exceptions become a plain 500 |
+| Framework-generated errors (404/405/415/401/403/429) | `app.UseOutcomeStatusCodePages()` with overridable `MapStatusCode` defaults | Body-less status codes stay body-less |
 | Casing and null handling | Your usual `HttpJsonOptions` | Host defaults apply |
 
 None of it is required. A minimal API can run on the two envelopes alone.
@@ -492,8 +499,11 @@ The controllers shrink to the outcome flow. Same JSON, less code:
 
 ```csharp
 // AFTER, part 2: same response bodies, no hand-built envelopes.
-public Outcome<Product> GetProduct(Guid id) =>
-    _repo.GetById(id) ?? new ProductNotFound(id);
+public Outcome<Product> GetProduct(Guid id)
+{
+    var product = _repo.GetById(id);
+    return product is null ? Outcome.Fail(new ProductNotFound(id)) : product;
+}
 
 group.MapGet("/{id:guid}", (Guid id, IProductService service, IHttpResultFactory http) =>
 {
@@ -572,18 +582,21 @@ status:
 A failure is a return value, like any other. Three shapes cover most code:
 
 ```csharp
-// 1. Null check in one expression. The implicit conversion lifts the failure.
-public Outcome<Product> GetProduct(Guid id) =>
-    _repo.GetById(id) ?? new ProductNotFound(id);
+// 1. Null check in one expression. Success is implicit, failure is explicit.
+public Outcome<Product> GetProduct(Guid id)
+{
+    var product = _repo.GetById(id);
+    return product is null ? Outcome.Fail(new ProductNotFound(id)) : product;
+}
 
 // 2. Guard clauses. Each check returns its own failure, success falls through.
 public Outcome<Order> PlaceOrder(Cart cart)
 {
     if (cart.Items.Count == 0)
-        return new EmptyCart();
+        return Outcome.Fail(new EmptyCart());
 
     if (_payments.GetBalance(cart.UserId) < cart.Total)
-        return new InsufficientFunds(cart.Total);
+        return Outcome.Fail(new InsufficientFunds(cart.Total));
 
     return _orders.Place(cart);        // implicit success
 }
@@ -729,7 +742,45 @@ builder.Services.AddOutcome(options =>
 
 var app = builder.Build();
 app.UseOutcomeExceptionHandler();   // BEFORE routing
+app.UseOutcomeStatusCodePages();    // 404/405/415/401/403 → your envelope
 ```
+
+### Framework-generated errors
+
+Some error responses never reach your code: a routing 404, a method-matching 405, an
+unsupported-media-type 415, an authentication 401/403, or a rate-limiter 429. ASP.NET Core
+writes those with an empty body, which would leave clients with a second error shape to
+parse.
+
+`UseOutcomeStatusCodePages()` fills them in with the same error envelope:
+
+```csharp
+app.UseOutcomeStatusCodePages(options =>
+{
+    // Non-API endpoints keep their original response. These are the defaults.
+    options.ExcludedPathPrefixes.Add("/scalar");
+
+    // Or filter per request instead:
+    // options.ShouldHandle = ctx => ctx.Request.Path.StartsWithSegments("/api");
+});
+```
+
+Defaults cover `404 → not_found`, `405 → method_not_allowed`, `415 → unsupported_media_type`,
+`401 → unauthorized`, `403 → forbidden`, `429 → too_many_requests`, and the other common
+error statuses. Override any entry — message and code both — next to your other error
+options:
+
+```csharp
+options.Error.MapStatusCode(StatusCodes.Status404NotFound, "not_found", "No such product.");
+```
+
+`204`, `304` and `HEAD` responses are never touched. Register the middleware early, before
+authentication, authorization and routing, so it can see the status codes they set.
+
+MVC model-state 400s are covered too: `AddOutcomeMvcFilter()` installs an
+`InvalidModelStateResponseFactory`, so binding and `[Required]` failures come back as your
+envelope (`validation_error` plus per-field `errors`) instead of
+`ValidationProblemDetails`.
 
 ---
 
@@ -781,6 +832,7 @@ handler first so a limiter failure also becomes your envelope:
 
 ```csharp
 app.UseOutcomeExceptionHandler(); // FIRST
+app.UseOutcomeStatusCodePages();  // 404/405/415/401/403
 app.UseRouting();
 app.UseRateLimiter();
 ```
