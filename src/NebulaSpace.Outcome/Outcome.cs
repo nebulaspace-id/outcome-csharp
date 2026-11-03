@@ -111,9 +111,21 @@ public readonly struct Outcome<T> : IOutcome, IEquatable<Outcome<T>>
                 "when a null payload is intentional, or Outcome<" + typeof(T).Name + ">.Fail(failure).")
             : Success(value);
 
-    /// <summary>Implicitly converts a unit outcome, preserving its success/failure state.</summary>
+    /// <summary>
+    /// Implicitly converts a failed unit outcome, preserving the failure. A <b>successful</b>
+    /// unit outcome has no payload, so converting it to <c>Outcome&lt;T&gt;</c> would create a
+    /// success with a null/default value; that is rejected instead of silently producing one.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The unit outcome is a success — return <see cref="Outcome{Unit}"/> from the caller, or
+    /// build the payload explicitly with <see cref="Success"/>.
+    /// </exception>
     public static implicit operator Outcome<T>(Outcome<Unit> unit) =>
-        unit.IsSuccess ? Success(default!) : Fail(unit.Failure);
+        unit.IsSuccess
+            ? throw new InvalidOperationException(
+                $"Cannot convert a successful Outcome<Unit> to Outcome<{typeof(T).Name}>: a unit outcome carries no payload. " +
+                $"Return Outcome<Unit> from the caller, or create the payload with Outcome<{typeof(T).Name}>.Success(value).")
+            : Fail(unit.Failure);
 
     /// <summary>Tries to read the payload. Returns <c>false</c> on failure.</summary>
     public bool TryGetValue(out T? value)

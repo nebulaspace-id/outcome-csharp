@@ -115,13 +115,17 @@ public class OutcomeTests
         }
 
         [Fact]
-        public void UnitOutcome_ImplicitlyConvertsToTypedOutcome()
+        public void SuccessfulUnitOutcome_DoesNotConvertToTypedOutcome()
         {
             Outcome<Unit> unit = Outcome.Success();
-            Outcome<int> typed = unit;
 
-            Assert.True(typed.IsSuccess);
-            Assert.False(typed.IsFailure);
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+            {
+                Outcome<int> typed = unit;
+                GC.KeepAlive(typed);
+            });
+
+            Assert.Contains("carries no payload", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -6,12 +6,15 @@ namespace NebulaSpace.Outcome;
 /// <para>
 /// Use <c>Outcome&lt;Unit&gt;</c> (created with <c>Outcome.Success()</c>) for operations
 /// that have no meaningful return value — create/delete/send actions that just succeed or
-/// fail. An <c>Outcome&lt;Unit&gt;</c> converts implicitly to <c>Outcome&lt;T&gt;</c>,
-/// so a no-payload outcome can be adapted wherever a payload outcome is expected.
+/// fail. A failed <c>Outcome&lt;Unit&gt;</c> converts implicitly to <c>Outcome&lt;T&gt;</c>,
+/// so a failure can be lifted wherever a payload outcome is expected. A successful unit
+/// outcome has no payload, so lifting it throws instead of producing a null success.
 /// </para>
 ///
 /// <para>
-/// <c>[OutcomeResult]</c> maps a successful <c>Outcome&lt;Unit&gt;</c> to <c>204 No Content</c>.
+/// Every entry point maps a successful <c>Outcome&lt;Unit&gt;</c> to <c>204 No Content</c>:
+/// the <c>[OutcomeResult]</c> filter and the payload-less
+/// <c>ToResult</c>/<c>ToActionResult</c> overloads.
 /// </para>
 /// </summary>
 public readonly struct Unit : IEquatable<Unit>
