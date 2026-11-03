@@ -39,6 +39,7 @@ dotnet add package NebulaSpace.Outcome.AspNetCore
   - [Serialized with your JSON options](#serialized-with-your-json-options)
   - [Metadata and pagination](#metadata-and-pagination)
   - [One strategy or both](#one-strategy-or-both)
+- [JSON:API-shaped data](#jsonapi-shaped-data)
 - [Keep a legacy response shape](#keep-a-legacy-response-shape)
 - [API documentation](#api-documentation)
 - [Failures](#failures)
@@ -411,6 +412,98 @@ group.MapGet("/cursor", (IProductService service, [AsParameters] CursorQuery que
 })
     .Produces<SuccessResponse<Product[]>>();
 ```
+
+---
+
+## JSON:API-shaped data
+
+The library never inspects `data`. If part of your API should speak JSON:API, keep the
+envelope and change only the payload shape — the sample ships two small helpers for that,
+both **sample-only** (not part of the package):
+
+```csharp
+// Shared/JsonApiResource.cs — the resource object JSON:API expects inside data.
+public sealed class JsonApiResource<TAttributes>
+{
+    [JsonPropertyName("type")] public required string Type { get; init; }
+    [JsonPropertyName("id")] public required string Id { get; init; }
+    [JsonPropertyName("attributes")] public required TAttributes Attributes { get; init; }
+}
+
+// Static factory: pass the domain id directly, no per-call conversion.
+public static class JsonApiResource
+{
+    public static JsonApiResource<TAttributes> Create<TAttributes>(
+        string type, Guid id, TAttributes attributes) =>
+        Create(type, id.ToString(), attributes);
+
+    public static JsonApiResource<TAttributes> Create<TAttributes>(
+        string type, string id, TAttributes attributes) =>
+        new() { Type = type, Id = id, Attributes = attributes };
+}
+```
+
+`Attributes` must not repeat `id` or `type`: JSON:API keeps the identifier on the resource
+object. Use a dedicated record for the attributes, not the domain model:
+
+```csharp
+public sealed record ProductAttributes(
+    string Name, decimal Price, string Category, DateTime CreatedAt);
+
+group.MapGet("/", (IProductService service, [AsParameters] JsonApiOffsetQuery query, IHttpResultFactory http) =>
+{
+    var offset = new OffsetQuery { Page = query.Page, Limit = query.Limit };
+    var result = service.GetProducts(offset);
+
+    return result.ToResult(http, page =>
+    {
+        var data = page.Items
+            .Select(p => JsonApiResource.Create(
+                "products",
+                p.Id,
+                new ProductAttributes(p.Name, p.Price, p.Category, p.CreatedAt)))
+            .ToArray();
+        var meta = new Meta().SetPagination(page, offset);
+
+        return http.Ok(data, meta);
+    });
+})
+    .Produces<SuccessResponse<JsonApiResource<ProductAttributes>[]>>();
+```
+
+Response — `data` is an array of resource objects:
+
+```json
+{
+  "statusCode": 200,
+  "data": [
+    {
+      "type": "products",
+      "id": "3c999947-6b69-4404-bf52-97e7555f656d",
+      "attributes": {
+        "name": "Monitor Stand",
+        "price": 147.64,
+        "category": "Electronics",
+        "createdAt": "2026-09-18T07:09:28.4586591Z"
+      }
+    }
+  ],
+  "meta": { "pagination": { ... }, "timestamp": "..." }
+}
+```
+
+The same factory covers a single resource: `data` becomes an object instead of an array,
+and an empty page serializes as `"data": []`. Keep the two surfaces apart with a prefix
+(the sample uses `/products/jsonapi`) and one query type per binding convention, so a URL
+declares which payload shape it returns.
+
+**Scope.** This is JSON:API-shaped `data`, not a compliant JSON:API document. `statusCode`
+is not a JSON:API member, errors still use the app's error envelope rather than `errors[]`,
+and the content type stays `application/json`. Those three are app-wide settings: switching
+them means a separate app, not a per-endpoint flag.
+
+The full runnable version, including bracketed `page[number]` / `page[cursor]` binding, is
+in [`samples/NebulaSpace.Outcome.Samples.WebApi`](samples/NebulaSpace.Outcome.Samples.WebApi/README.md).
 
 ---
 
